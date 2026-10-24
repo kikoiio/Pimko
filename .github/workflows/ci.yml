@@ -24,6 +24,8 @@ jobs:
       - run: npm run build
       - name: Smoke (create draft → revise → export)
         run: npm run smoke
+      - name: MCP smoke (external client roundtrip)
+        run: npm run smoke:mcp
 
   ui:
     runs-on: ubuntu-24.04

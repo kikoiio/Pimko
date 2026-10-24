@@ -1,8 +1,8 @@
 # Pimko
 
-对话式短视频剪辑 agent。第一用户是不懂剪辑的创作者：导入口播素材，用自然语言反馈，得到可直接发布的竖版成片。
+对话式短视频剪辑 agent。第一用户是不懂剪辑的创作者：导入口播素材，用自然语言反馈，得到可直接发布的成片。
 
-当前状态：架构设计（`docs/architecture.md`）+ 项目骨架。领域模型与 ports 已定型，`Editor` 服务与 mock 基础设施为待实现的 stub。
+当前状态：M4「剪辑工具面扩展」——词级转写、确定性静音分析、口癖检测、按段变速、LLM 输出加固，以及本地 MCP 服务器（外部 agent 可驱动同一引擎）。领域模型与 ports 见 `docs/architecture.md`，需求与里程碑见 `docs/requirements.md`，先行调研见 `docs/research/`。
 
 ## 开发
 
@@ -11,7 +11,9 @@ npm install
 npm run dev       # Electron 开发模式
 npm run typecheck
 npm run build
-npm run smoke     # 端到端冒烟：草稿 → 修订 → 导出
+npm run smoke     # 端到端冒烟：草稿 → 修订 → 变速 → 导出
+npm run smoke:mcp # MCP 冒烟：外部客户端经 stdio 驱动引擎闭环
+npm run mcp       # 启动 MCP 服务器（供 Claude Code 等 agent 接入）
 ```
 
 没有素材时可以生成测试视频（已加入 .gitignore，不会提交）：

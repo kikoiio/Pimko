@@ -9,6 +9,8 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
+    "smoke:mcp": "tsx scripts/smoke-mcp.ts",
+    "mcp": "tsx scripts/mcp.ts",
     "test:ui": "tsx scripts/e2e-ui.ts",
     "start": "electron-vite preview"
   },
