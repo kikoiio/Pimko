@@ -176,7 +176,7 @@ Pimko 是一个面向"完全不会剪辑"用户的对话式短视频剪辑 agent
 | 项 | 约束 |
 |----|------|
 | 桌面框架 | Electron + React + TypeScript(2026-10 调研确认主流路线,不变更) |
-| 视频处理 | 本地 ffmpeg(系统安装;产品化里程碑改为捆绑静态二进制 + macOS 嵌套签名) |
+| 视频处理 | 随包 ffmpeg/ffprobe 静态二进制(extraResources),开发态回退 ffmpeg-static/系统 PATH;用户无需安装 | |
 | 转写 | Groq Whisper `whisper-large-v3`(OpenAI 兼容 API),词级时间戳 |
 | LLM | OpenRouter 免费模型 + `require_parameters: true` + 客户端 schema 校验 |
 | 编排 | 手写 fetch + JSON schema,不引入 LangChain |
@@ -237,13 +237,13 @@ Groq Whisper 转写 + OpenRouter LLM 剪辑决策,云端 E2E 全绿。
 - 修订 diff 展示(增/删/移/变速随气泡展示,MCP 摘要同步携带)
 - prompt 元数据升级(词级时间戳 + 停顿图 + 口癖清单 + 语速密度)
 
-### M6:产品化与体验(进行中,2026-10-24)
+### M6:产品化与体验(已完成,2026-10-24)
 
 - ✅ 撤销/回退(修订链上回退,可连续撤销)
 - ✅ BGM 音量调节(轻/标准/响三档 + 连续值)
 - ✅ 片段缩略图(中点帧,磁盘缓存)
 - ✅ 转场效果(0.3s 叠化,LLM/对话可控;预览保持硬切,导出生效)
-- ⬜ ffmpeg 捆绑静态二进制 + 各平台打包签名(待做:需要确定目标平台与签名证书)
+- ✅ ffmpeg 捆绑静态二进制 + 打包(Linux AppImage/deb + Windows NSIS;Release 工作流云端构建,用户无需安装 ffmpeg;平台签名暂缺,后续补)
 
 ### M7:移动端(远期评估)
 

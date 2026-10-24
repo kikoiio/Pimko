@@ -39,7 +39,17 @@ ffmpeg -f lavfi -i "flite=text=Hello and welcome to Pimko. This is a test talkin
 
 产品需求、验收标准和路线图见 [docs/requirements.md](docs/requirements.md)。
 
+## 打包分发(Linux + Windows)
+
+CI(`Release` 工作流)打云端全流程包,本机零负担:
+
+- push tag `v*` 或手动 dispatch 触发;
+- ffmpeg/ffprobe 静态二进制随包分发(`extraResources/bin`),**用户无需安装 ffmpeg**;
+- 产物:Linux AppImage/deb + Windows NSIS 安装包,Artifacts 可下载。
+
+本机打包(需要时):`npm run dist:linux` / `npm run dist:win`。
+
 ## 验证
 
-推送和 PR 会自动跑 GitHub Actions（typecheck / build / smoke），本机不承担测试负载。
+推送和 PR 会自动跑 GitHub Actions(typecheck / build / smoke / mock UI E2E / 真实 LLM E2E),本机不承担测试负载。
 ```
