@@ -43,13 +43,21 @@ async function main(): Promise<void> {
 
     const draft = await editor.createDraft(inputPath, 'smoke')
     console.log(`draft: ${draft.project.timeline.clips.length} clips`)
+    // 预剪提案:1s 静音(2-3s)应把段 0-4 拆成两段,压缩区间中点 2.55s 不应属于任何片段。
+    const coversMidSilence = draft.project.timeline.clips.some(
+      (clip) => clip.sourceStartSec < 2.55 && clip.sourceEndSec > 2.55,
+    )
+    if (draft.project.timeline.clips.length !== 3 || coversMidSilence) {
+      throw new Error(`停顿压缩预剪不符: ${JSON.stringify(draft.project.timeline.clips.map((c) => [c.sourceStartSec, c.sourceEndSec]))}`)
+    }
+    console.log('pause compress ok: 3 clips, silence middle removed')
     const silenceGap = draft.project.silences ?? []
     if (silenceGap.length !== 1 || Math.abs((silenceGap[0]!.endSec - silenceGap[0]!.startSec) - 1) > 0.3) {
       throw new Error(`静音分析不符: ${JSON.stringify(silenceGap)}`)
     }
     console.log(`silence ok: ${silenceGap[0]!.startSec.toFixed(2)}-${silenceGap[0]!.endSec.toFixed(2)}s`)
     const fillers = draft.project.transcript ? findFillerWords(draft.project.transcript) : []
-    if (fillers.length < draft.project.timeline.clips.length) {
+    if (fillers.length < (draft.project.transcript?.segments.length ?? 0)) {
       throw new Error(`口癖检测不符: ${JSON.stringify(fillers)}`)
     }
     console.log(`fillers ok: ${fillers.length} hits`)

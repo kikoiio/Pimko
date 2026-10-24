@@ -1,5 +1,6 @@
 import type { SilenceInterval } from '../domain/analysis'
 import { CONTEXTUAL_FILLERS, findFillerWords } from '../domain/fillers'
+import { applyPauseCompressions, describePauseCompressions, planPauseCompressions } from '../domain/pause-compress'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
@@ -45,8 +46,8 @@ export class OpenAiIntelligence implements EditingIntelligence {
     )
     if (!plan) {
       return {
-        timeline: this.fullTimeline(transcript),
-        note: '模型输出无效，已先用完整时间线建稿，请继续对话调整。',
+        timeline: this.fullTimeline(transcript, silences),
+        note: '模型输出无效，已按确定性预剪(停顿压缩)建稿，请继续对话调整。',
       }
     }
     return { timeline: this.toTimeline(plan.clips, transcript, transcript.assetId), note: plan.reply }
@@ -84,13 +85,20 @@ export class OpenAiIntelligence implements EditingIntelligence {
     return `\n${parts.join('\n')}`
   }
 
-  /** 静音图作为第二事实源进 prompt：LLM 拿它微调切点，而不是自己猜停顿。 */
+  /** 静音图 + 参数化压缩提案一起进 prompt:LLM 默认采纳,可整体覆盖。 */
   private silenceBlock(silences?: SilenceInterval[]): string {
     if (!silences || silences.length === 0) return ''
     const lines = silences
       .map((interval) => `- ${interval.startSec.toFixed(2)}-${interval.endSec.toFixed(2)}s（长 ${(interval.endSec - interval.startSec).toFixed(2)}s）`)
       .join('\n')
-    return `\n\n确定性检测到的静音/长停顿（切点参考：长停顿可剪掉，边界各留约 0.15s 余量，避免切到语音）：\n${lines}`
+    const edits = planPauseCompressions(silences)
+    const proposal = edits.length > 0
+      ? `\n预剪提案（${describePauseCompressions(edits)}）：默认采纳——把跨停顿的片段拆分、绕开压缩区间 ${edits
+          .slice(0, 12)
+          .map((edit) => `${edit.cutStartSec.toFixed(2)}-${edit.cutEndSec.toFixed(2)}s`)
+          .join('、')}${edits.length > 12 ? ' 等' : ''}；个别停顿有表达作用时可覆盖保留。`
+      : ''
+    return `\n\n确定性检测到的静音/长停顿：\n${lines}${proposal}`
   }
 
   private async plan(transcript: Transcript, userMessage: string): Promise<LlmPlan | null> {
@@ -172,15 +180,19 @@ export class OpenAiIntelligence implements EditingIntelligence {
     }
   }
 
-  private fullTimeline(transcript: Transcript): Timeline {
-    return {
-      clips: transcript.segments.map((segment) => ({
+  private fullTimeline(transcript: Transcript, silences?: SilenceInterval[]): Timeline {
+    const clips = applyPauseCompressions(
+      transcript.segments.map((segment) => ({
         assetId: transcript.assetId,
         sourceStartSec: segment.startSec,
         sourceEndSec: segment.endSec,
       })),
+      planPauseCompressions(silences),
+    )
+    return {
+      clips,
       subtitles: transcript.segments.map(({ startSec, endSec, text }) => ({ startSec, endSec, text })),
-      transitions: transcript.segments.slice(1).map(() => ({ type: 'cut' as const })),
+      transitions: clips.slice(1).map(() => ({ type: 'cut' as const })),
     }
   }
 

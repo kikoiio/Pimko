@@ -1,16 +1,22 @@
 import type { SilenceInterval } from '../domain/analysis'
+import { applyPauseCompressions, planPauseCompressions } from '../domain/pause-compress'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
 import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
 
 export class MockIntelligence implements EditingIntelligence {
-  async draftTimeline(transcript: Transcript, _settings: ProjectSettings, _silences?: SilenceInterval[]): Promise<EditPlan> {
-    const clips = transcript.segments.map((segment) => ({
-      assetId: transcript.assetId,
-      sourceStartSec: segment.startSec,
-      sourceEndSec: segment.endSec,
-    }))
+  async draftTimeline(transcript: Transcript, _settings: ProjectSettings, silences?: SilenceInterval[]): Promise<EditPlan> {
+    // mock 也走同一条确定性预剪路径:静音图 → 压缩提案 → 应用到片段。
+    const clips = applyPauseCompressions(
+      transcript.segments.map((segment) => ({
+        assetId: transcript.assetId,
+        sourceStartSec: segment.startSec,
+        sourceEndSec: segment.endSec,
+      })),
+      planPauseCompressions(silences),
+    )
+    const compressed = clips.length > transcript.segments.length
     const timeline = {
       clips,
       subtitles: transcript.segments.map(({ startSec, endSec, text }) => ({
@@ -22,7 +28,9 @@ export class MockIntelligence implements EditingIntelligence {
     }
     return {
       timeline,
-      note: '草稿已生成。当前是 mock 转写和 mock 剪辑，接入真实 API 后会按素材内容剪辑。',
+      note: compressed
+        ? '草稿已生成,长停顿已按预剪提案压缩(mock 演示逻辑)。'
+        : '草稿已生成。当前是 mock 转写和 mock 剪辑，接入真实 API 后会按素材内容剪辑。',
     }
   }
 
