@@ -1,7 +1,7 @@
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
-import type { EditingIntelligence } from '../ports/intelligence'
+import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
 import type { LlmConfig } from './llm-config'
 
 interface LlmClip {
@@ -28,12 +28,13 @@ const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不
 export class OpenAiIntelligence implements EditingIntelligence {
   constructor(private readonly config: LlmConfig) {}
 
-  async draftTimeline(transcript: Transcript, settings: ProjectSettings): Promise<Timeline> {
+  async draftTimeline(transcript: Transcript, settings: ProjectSettings): Promise<EditPlan> {
     const plan = await this.plan(transcript, '这是初始草稿：请保留全部有效内容，只剪掉明显的口癖和长停顿。')
-    return plan ? this.toTimeline(plan.clips, transcript, transcript.assetId) : this.fullTimeline(transcript)
+    if (!plan) return { timeline: this.fullTimeline(transcript) }
+    return { timeline: this.toTimeline(plan.clips, transcript, transcript.assetId), note: plan.reply }
   }
 
-  async reviseTimeline(project: Project, feedback: Feedback): Promise<Timeline> {
+  async reviseTimeline(project: Project, feedback: Feedback): Promise<EditPlan> {
     const transcript = this.reconstructTranscript(project)
     const current = project.timeline.clips
       .map((clip, index) => `第${index + 1}段: ${clip.sourceStartSec.toFixed(2)}-${clip.sourceEndSec.toFixed(2)}`)
@@ -42,7 +43,11 @@ export class OpenAiIntelligence implements EditingIntelligence {
       transcript,
       `当前时间线：\\n${current}\\n\\n用户反馈：${feedback.text}`,
     )
-    return plan ? this.toTimeline(plan.clips, transcript, project.assets[0]!.id) : structuredClone(project.timeline)
+    if (!plan) return { timeline: structuredClone(project.timeline) }
+    return {
+      timeline: this.toTimeline(plan.clips, transcript, project.assets[0]!.id),
+      note: plan.reply,
+    }
   }
 
   private async plan(transcript: Transcript, userMessage: string): Promise<LlmPlan | null> {

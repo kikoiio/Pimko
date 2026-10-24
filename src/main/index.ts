@@ -9,6 +9,7 @@ import { MockIntelligence } from '../infra/mock-intelligence'
 import { createIntelligence, createTranscriber } from '../infra/ai-factory'
 import { loadDotEnv } from '../infra/env'
 import { loadLlmConfig } from '../infra/llm-config'
+import type { LlmConfig } from '../infra/llm-config'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
@@ -16,7 +17,17 @@ const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
 let editor: Editor
 
 function createEditor(): Editor {
-  const config = loadLlmConfig()
+  let config: LlmConfig
+  try {
+    config = loadLlmConfig()
+  } catch (err) {
+    // 配置错误不应让应用白屏；降级到 mock 并在启动时明确告知。
+    dialog.showErrorBox(
+      'LLM 配置错误',
+      `${err instanceof Error ? err.message : String(err)}\n\n已回退到 mock 模式，修正 .env 后重启应用即可。`,
+    )
+    config = { provider: 'mock' as const }
+  }
   return new Editor({
     prober: new FfmpegProber(),
     transcriber: createTranscriber(config),
@@ -72,9 +83,18 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
+    minWidth: 960,
+    minHeight: 640,
     title: 'Pimko',
+    webPreferences: {
+      preload: path.join(__dirname, '../preload/index.js'),
+    },
   })
-  void win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  if (process.env.ELECTRON_RENDERER_URL) {
+    void win.loadURL(process.env.ELECTRON_RENDERER_URL)
+  } else {
+    void win.loadFile(path.join(__dirname, '../renderer/index.html'))
+  }
 }
 
 void app.whenReady().then(() => {

@@ -1,16 +1,16 @@
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
-import type { EditingIntelligence } from '../ports/intelligence'
+import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
 
 export class MockIntelligence implements EditingIntelligence {
-  async draftTimeline(transcript: Transcript, _settings: ProjectSettings): Promise<Timeline> {
+  async draftTimeline(transcript: Transcript, _settings: ProjectSettings): Promise<EditPlan> {
     const clips = transcript.segments.map((segment) => ({
       assetId: transcript.assetId,
       sourceStartSec: segment.startSec,
       sourceEndSec: segment.endSec,
     }))
-    return {
+    const timeline = {
       clips,
       subtitles: transcript.segments.map(({ startSec, endSec, text }) => ({
         startSec,
@@ -19,9 +19,13 @@ export class MockIntelligence implements EditingIntelligence {
       })),
       transitions: clips.slice(1).map(() => ({ type: 'cut' as const })),
     }
+    return {
+      timeline,
+      note: '草稿已生成。当前是 mock 转写和 mock 剪辑，接入真实 API 后会按素材内容剪辑。',
+    }
   }
 
-  async reviseTimeline(project: Project, feedback: Feedback): Promise<Timeline> {
+  async reviseTimeline(project: Project, feedback: Feedback): Promise<EditPlan> {
     const timeline = project.timeline
     if (feedback.text.includes('开头太拖')) {
       const clips = timeline.clips.slice()
@@ -32,10 +36,16 @@ export class MockIntelligence implements EditingIntelligence {
         const firstCue = timeline.subtitles.find(
           (cue) => cue.startSec < first.sourceEndSec && cue.endSec > first.sourceStartSec + trim,
         )
-        return { ...timeline, clips, subtitles: remapSubtitles(clips, timeline.subtitles, firstCue?.text) }
+        return {
+          timeline: { ...timeline, clips, subtitles: remapSubtitles(clips, timeline.subtitles, firstCue?.text) },
+          note: '已剪短开头（mock 演示逻辑）。',
+        }
       }
     }
-    return structuredClone(timeline)
+    return {
+      timeline: structuredClone(timeline),
+      note: 'mock 模式只演示“开头太拖”这一种反馈，其他反馈暂不改动时间线。',
+    }
   }
 }
 

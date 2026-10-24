@@ -87,7 +87,9 @@ UI 不接触 ffmpeg、转写器、模型；它只看到 `ProjectRevision`（可�
 
 ## Implementation reconciliation
 
-（实现期间记录对偏差的接受与理由。）
+- `Project` 增加 `transcript` 字段：修订循环需要原始转写作为事实源；从字幕反推会在多轮修订后失真。
+- `EditingIntelligence` 返回 `EditPlan { timeline, note }` 而非裸 `Timeline`：LLM 的中文说明是对话体验的一部分，由 `Editor` 写入修订的 `agentNote`。
+- 渲染保留原声音轨（初版误删）；BGM 通过 `amix` 与原声混合。
 
 ## Open questions and risks
 

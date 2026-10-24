@@ -43,6 +43,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [liveSubtitle, setLiveSubtitle] = useState('')
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const activeClipRef = useRef(0)
@@ -67,6 +68,7 @@ export function App() {
       setOutput(null)
       setPreviewMode('draft')
       activeClipRef.current = 0
+      setLiveSubtitle('')
       setMessages([])
       const count = result.revision.project.timeline.clips.length
       pushAgent(`草稿好了：${count} 段，共 ${fmt(totalDuration(result.revision))}。看看哪里不顺，直接告诉我。`)
@@ -89,10 +91,11 @@ export function App() {
       setOutput(null)
       setPreviewMode('draft')
       activeClipRef.current = 0
+      setLiveSubtitle('')
       const delta = totalDuration(next) - before
       const deltaText = delta === 0 ? '时长不变' : `${delta > 0 ? '+' : ''}${fmt(delta)}`
       const note = next.agentNote
-        ? `${next.agentNote}（${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}，${deltaText}）`
+        ? `${next.agentNote}（${fmt(totalDuration(next))}，${deltaText}）`
         : `改好了：${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}（${deltaText}）。`
       pushAgent(note)
     } catch (err) {
@@ -124,6 +127,7 @@ export function App() {
       setRevision(next)
       setOutput(null)
       setPreviewMode('draft')
+      setLiveSubtitle('')
       pushAgent(next.agentNote ?? '配乐已移除。')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -157,7 +161,14 @@ export function App() {
   }
 
   function handleTimeUpdate(): void {
-    if (previewMode !== 'draft' || !videoRef.current) return
+    if (!videoRef.current) return
+    const time = videoRef.current.currentTime
+    if (previewMode !== 'draft' || !revision) {
+      setLiveSubtitle('')
+      return
+    }
+    const cue = revision.project.timeline.subtitles.find((c) => time >= c.startSec && time < c.endSec)
+    setLiveSubtitle(cue?.text ?? '')
     const clip = clips[activeClipRef.current]
     if (!clip) return
     if (videoRef.current.currentTime >= clip.sourceEndSec) {
@@ -226,6 +237,7 @@ export function App() {
         <main className="workspace">
           <section className="stage" aria-label="预览">
             {previewSrc ? (
+              <div className="video-wrap">
               <video
                 key={previewSrc}
                 ref={videoRef}
@@ -234,6 +246,10 @@ export function App() {
                 playsInline
                 onTimeUpdate={handleTimeUpdate}
               />
+                {previewMode === 'draft' && liveSubtitle && (
+                  <div className="subtitle-overlay">{liveSubtitle}</div>
+                )}
+              </div>
             ) : (
               <div className="stage-placeholder">正在准备预览…</div>
             )}
