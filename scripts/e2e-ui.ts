@@ -87,9 +87,19 @@ async function main(): Promise<void> {
       const list = await window.pimko.listProjects()
       if (list.length === 0) return { ok: false, reason: 'no projects' }
       const result = await window.pimko.restoreProject(list[0]!.projectId)
-      return { ok: result.revision.project.timeline.clips.length > 0, projectId: list[0]!.projectId }
+      const transcript = result.revision.project.transcript
+      const words = transcript?.segments.reduce((sum, segment) => sum + (segment.words?.length ?? 0), 0) ?? 0
+      return {
+        ok: result.revision.project.timeline.clips.length > 0,
+        projectId: list[0]!.projectId,
+        transcriptSegments: transcript?.segments.length ?? 0,
+        wordTimestamps: words,
+      }
     })
     if (!restored.ok) throw new Error(`项目恢复失败: ${JSON.stringify(restored)}`)
+    if (restored.wordTimestamps === 0) {
+      throw new Error(`转写缺少词级时间戳: ${JSON.stringify(restored)}`)
+    }
     if (!stageFits) {
       throw new Error(`视频超出预览区: video=${JSON.stringify(videoBox)} stage=${JSON.stringify(stageBox)}`)
     }
