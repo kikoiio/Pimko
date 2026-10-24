@@ -30,7 +30,12 @@ export class OpenAiIntelligence implements EditingIntelligence {
 
   async draftTimeline(transcript: Transcript, settings: ProjectSettings): Promise<EditPlan> {
     const plan = await this.plan(transcript, '这是初始草稿：请保留全部有效内容，只剪掉明显的口癖和长停顿。')
-    if (!plan) return { timeline: this.fullTimeline(transcript) }
+    if (!plan) {
+      return {
+        timeline: this.fullTimeline(transcript),
+        note: '模型输出无效，已先用完整时间线建稿，请继续对话调整。',
+      }
+    }
     return { timeline: this.toTimeline(plan.clips, transcript, transcript.assetId), note: plan.reply }
   }
 
@@ -41,9 +46,12 @@ export class OpenAiIntelligence implements EditingIntelligence {
       .join('\\n')
     const plan = await this.plan(
       transcript,
-      `当前时间线：\\n${current}\\n\\n用户反馈：${feedback.text}`,
+      `当前时间线：\n${current}\n\n用户反馈：${feedback.text}`,
     )
-    if (!plan) return { timeline: structuredClone(project.timeline) }
+    if (!plan) {
+      // 重试耗尽仍无效：宁可报错也不静默沿用旧时间线，让用户知道这轮没生效。
+      throw new Error('模型连续返回无效结果，已保留上一版。请稍后重试或换个说法。')
+    }
     return {
       timeline: this.toTimeline(plan.clips, transcript, project.assets[0]!.id),
       note: plan.reply,
@@ -57,35 +65,42 @@ export class OpenAiIntelligence implements EditingIntelligence {
         (segment, index) =>
           `${index}: ${segment.startSec.toFixed(2)}-${segment.endSec.toFixed(2)} ${segment.text}`,
       )
-      .join('\\n')
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.config.model ?? 'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `转写片段（index: 起止秒 文本）：\\n${segments}\\n\\n${userMessage}` },
-        ],
-      }),
-    })
-    if (!response.ok) {
-      throw new Error(`LLM 请求失败: ${response.status} ${await response.text()}`)
+      .join('\n')
+    const body: Record<string, unknown> = {
+      model: this.config.model ?? 'gpt-4o-mini',
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `转写片段（index: 起止秒 文本）：\n${segments}\n\n${userMessage}` },
+      ],
     }
-    const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
-    const content = data.choices?.[0]?.message?.content
-    if (!content) return null
-    try {
-      const parsed = JSON.parse(content) as LlmPlan
-      if (!Array.isArray(parsed.clips)) return null
-      return parsed
-    } catch {
-      return null
+    // OpenRouter 的结构化输出按端点"尽力而为"；该参数只把请求路由到强制 schema 的端点。
+    if (baseUrl.includes('openrouter.ai')) body.require_parameters = true
+
+    // 最多 3 次尝试：偶发非法 JSON / 越界字段时重试，而不是静默降级。
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) {
+        throw new Error(`LLM 请求失败: ${response.status} ${await response.text()}`)
+      }
+      const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
+      const content = data.choices?.[0]?.message?.content
+      if (!content) continue
+      try {
+        const parsed = JSON.parse(content) as unknown
+        if (isLlmPlan(parsed)) return parsed
+      } catch {
+        // 非法 JSON，进入下一次重试
+      }
     }
+    return null
   }
 
   private toTimeline(llmClips: LlmClip[], transcript: Transcript, assetId: string): Timeline {
@@ -143,4 +158,20 @@ export class OpenAiIntelligence implements EditingIntelligence {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+/** 客户端 schema 校验：OpenRouter 的结构化输出只按端点尽力而为，不能信任原生约束。 */
+function isLlmPlan(value: unknown): value is LlmPlan {
+  if (typeof value !== 'object' || value === null) return false
+  const { clips, reply } = value as { clips?: unknown; reply?: unknown }
+  if (!Array.isArray(clips)) return false
+  for (const clip of clips) {
+    if (typeof clip !== 'object' || clip === null) return false
+    const { segmentIndex, startSec, endSec } = clip as Record<string, unknown>
+    if (typeof segmentIndex !== 'number' || !Number.isInteger(segmentIndex) || segmentIndex < 0) return false
+    if (typeof startSec !== 'number' || typeof endSec !== 'number') return false
+    if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) return false
+  }
+  if (reply !== undefined && typeof reply !== 'string') return false
+  return true
 }
