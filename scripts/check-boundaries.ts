@@ -36,7 +36,8 @@ async function main(): Promise<void> {
         assert.equal(asset.width, expected.width)
         assert.equal(asset.height, expected.height)
         assert.ok(asset.durationSec >= expected.minDuration && asset.durationSec <= expected.maxDuration, `源时长 ${asset.durationSec}`)
-        const { stdout } = await exec(resolveFfprobe(), ['-v', 'error', '-show_streams', '-show_packets', '-of', 'json', file], { maxBuffer: 16 * 1024 * 1024 })
+        const packetArgs = spec.id === 'vfr' ? ['-show_packets', '-show_entries', 'packet=stream_index,pts_time:stream'] : []
+        const { stdout } = await exec(resolveFfprobe(), ['-v', 'error', '-show_streams', ...packetArgs, '-of', 'json', file], { maxBuffer: 2 * 1024 * 1024 })
         const probe: {
           streams: { codec_type: string; sample_aspect_ratio?: string; duration?: string; start_time?: string; side_data_list?: { rotation?: number }[] }[]
           packets: { stream_index: number; pts_time?: string }[]

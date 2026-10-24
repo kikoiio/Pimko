@@ -39,7 +39,7 @@ jobs:
           scripts/boundary-cases.ts scripts/make-boundaries.ts scripts/check-boundaries.ts
       - name: Generate corpus
         env:
-          EXTENDED: ${{ inputs.extended || false }}
+          EXTENDED: ${{ inputs.extended || github.event_name == 'pull_request' }}
         run: |
           if [ "$EXTENDED" = "true" ]; then
             npm run fixtures:boundaries -- --extended
