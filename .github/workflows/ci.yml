@@ -49,8 +49,6 @@ jobs:
 
   e2e-openai:
     runs-on: ubuntu-24.04
-    needs: ui
-    if: ${{ vars.PIMKO_RUN_OPENAI_E2E == 'true' }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -79,4 +77,6 @@ jobs:
           PIMKO_E2E_VIDEO: ${{ github.workspace }}/sample-assets/voice.mp4
           PIMKO_LLM_PROVIDER: openai
           PIMKO_LLM_API_KEY: ${{ secrets.PIMKO_LLM_API_KEY }}
-          PIMKO_LLM_MODEL: ${{ vars.PIMKO_LLM_MODEL }}
+          PIMKO_LLM_MODEL: ${{ vars.PIMKO_LLM_MODEL || 'openai/gpt-oss-120b' }}
+          PIMKO_TRANSCRIBE_MODEL: whisper-large-v3
+          PIMKO_LLM_BASE_URL: https://api.groq.com/openai/v1
