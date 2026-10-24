@@ -15,8 +15,8 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 ```
 
 `check:fixtures` 的 `--only a,b` 可只跑指定素材;`--transcribe` 会检查词级时间戳、英文素材的
-口癖检出,中文素材还要求识别出汉字。`samples` 同样支持 `--only`(按 id,见下表之外的
-`manifest.json`),便于只刷新单个来源。
+口癖检出,中文素材还要求识别出汉字。`samples` 同样支持 `--only`(按样例 id,便于只刷新
+单个来源)。
 
 `check:fixtures` 的 `--only a,b` 可只跑指定素材;`--transcribe` 会检查词级时间戳,中文素材还要求识别出汉字。
 
@@ -40,12 +40,12 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 
 由 `scripts/fetch-samples.ts` 下载,记录在 `sample-assets/public/manifest.json`(含 sha256、时长、许可证)。
 
-| 文件 | 来源 | 许可证 | 用途 |
-|------|------|--------|------|
-| `sintel-trailer.mp4` (854×480, 52s) | [Blender Foundation / Sintel](https://media.w3.org/2010/05/sintel/trailer.mp4) | CC BY 3.0 | 有对白的真实剪辑素材 |
-| `big-buck-bunny-10s.mp4` (640×360, 10s) | [test-videos.co.uk](https://test-videos.co.uk/bigbuckbunny/mp4-h264) | CC BY 3.0 | 快速渲染/比例回归 |
-| `zh-speaking-portrait.mp4` (720×1280, 45s) | [台北市长中文演讲音频](https://commons.wikimedia.org/wiki/File:2008TourDeTaiwan_Stage8_Speech_by_Taipei_City_Mayor_in_Chinese.ogg), Rico Shen (BrockF5) | CC BY-SA 4.0 | 中文口播转写 + 竖屏 |
-| `en-speaking.mp4` (854×480, 30s) | [JFK Berlin address](https://commons.wikimedia.org/wiki/File:Jfk_berlin_address_high.ogg) | Public domain | 英文口播转写 |
+| 文件 | 样例 id | 来源 | 许可证 | 用途 |
+|------|---------|------|--------|------|
+| `sintel-trailer.mp4` (854×480, 52s) | `sintel-trailer` | [Blender Foundation / Sintel](https://media.w3.org/2010/05/sintel/trailer.mp4) | CC BY 3.0 | 有对白的真实剪辑素材 |
+| `big-buck-bunny-10s.mp4` (640×360, 10s) | `big-buck-bunny-10s` | [test-videos.co.uk](https://test-videos.co.uk/bigbuckbunny/mp4-h264) | CC BY 3.0 | 快速渲染/比例回归 |
+| `zh-speaking-portrait.mp4` (720×1280, 45s) | `zh-speech` | [台北市长中文演讲音频](https://commons.wikimedia.org/wiki/File:2008TourDeTaiwan_Stage8_Speech_by_Taipei_City_Mayor_in_Chinese.ogg), Rico Shen (BrockF5) | CC BY-SA 4.0 | 中文口播转写 + 竖屏 |
+| `en-speaking.mp4` (854×480, 30s) | `en-speech` | [JFK Berlin address](https://commons.wikimedia.org/wiki/File:Jfk_berlin_address_high.ogg) | Public domain | 英文口播转写 |
 
 注意:
 

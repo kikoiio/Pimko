@@ -138,10 +138,16 @@ async function checkFixture(spec: FixtureSpec, fixtureDir: string, workRoot: str
   )
 }
 
+interface TranscribeCheck {
+  name: string
+  file: string
+  expectCjk?: boolean
+  minFillers?: number
+  minWords?: number
+}
+
 /** 真实转写检查：断言有词级时间戳；中文素材还要能识别出中文。 */
-async function checkTranscription(
-  files: Array<{ name: string; file: string; expectCjk?: boolean; minFillers?: number }>,
-): Promise<void> {
+async function checkTranscription(files: TranscribeCheck[]): Promise<void> {
   await loadDotEnv()
   const config = loadLlmConfig()
   if (config.provider === 'mock') {
@@ -157,6 +163,9 @@ async function checkTranscription(
     const fillers = findFillerWords(transcript)
     if (transcript.segments.length === 0) throw new Error(`${entry.name}: 转写无分段`)
     if (words === 0) throw new Error(`${entry.name}: 转写无词级时间戳`)
+    if (entry.minWords !== undefined && words < entry.minWords) {
+      throw new Error(`${entry.name}: 只转写出 ${words} 个词，少于期望 ${entry.minWords}（素材可能被截断）`)
+    }
     const text = transcript.segments.map((segment) => segment.text).join(' ')
     if (entry.expectCjk && !/[一-鿿]/.test(text)) {
       throw new Error(`${entry.name}: 期望识别出中文，实际「${text.slice(0, 60)}」`)
@@ -185,11 +194,18 @@ async function main(): Promise<void> {
     }
 
     if (withTranscribe) {
-      const files = [{ name: 'talking-head-en', file: path.join(fixtureDir, 'talking-head-en.mp4'), minFillers: 1 }]
+      const files: TranscribeCheck[] = [
+        {
+          name: 'talking-head-en',
+          file: path.join(fixtureDir, 'talking-head-en.mp4'),
+          minFillers: 1,
+          minWords: 15,
+        },
+      ]
       const zhSample = path.join(root, 'sample-assets', 'public', 'zh-speaking-portrait.mp4')
       try {
         await readFile(zhSample)
-        files.push({ name: 'zh-speaking-portrait', file: zhSample, expectCjk: true })
+        files.push({ name: 'zh-speaking-portrait', file: zhSample, expectCjk: true, minWords: 30 })
       } catch {
         console.warn('未找到公开中文素材（npm run samples），跳过中文转写检查')
       }
