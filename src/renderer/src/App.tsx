@@ -91,7 +91,40 @@ export function App() {
       activeClipRef.current = 0
       const delta = totalDuration(next) - before
       const deltaText = delta === 0 ? '时长不变' : `${delta > 0 ? '+' : ''}${fmt(delta)}`
-      pushAgent(`改好了：${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}（${deltaText}）。`)
+      const note = next.agentNote
+        ? `${next.agentNote}（${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}，${deltaText}）`
+        : `改好了：${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}（${deltaText}）。`
+      pushAgent(note)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleSetBgm(): Promise<void> {
+    if (!revision) return
+    setError(null)
+    try {
+      const next = await window.pimko.setBgm(revision.project.id)
+      if (next) {
+        setRevision(next)
+        setOutput(null)
+        setPreviewMode('draft')
+        pushAgent(next.agentNote ?? '配乐已设置。')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleRemoveBgm(): Promise<void> {
+    if (!revision?.project.timeline.bgm) return
+    setError(null)
+    try {
+      const next = await window.pimko.removeBgm(revision.project.id)
+      setRevision(next)
+      setOutput(null)
+      setPreviewMode('draft')
+      pushAgent(next.agentNote ?? '配乐已移除。')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -147,6 +180,17 @@ export function App() {
           Pimko
         </div>
         <div className="topbar-actions">
+          {revision && (
+            revision.project.timeline.bgm ? (
+              <button className="button" onClick={() => void handleRemoveBgm()} disabled={stage !== 'ready'}>
+                移除配乐
+              </button>
+            ) : (
+              <button className="button" onClick={() => void handleSetBgm()} disabled={stage !== 'ready'}>
+                添加配乐
+              </button>
+            )
+          )}
           {revision && (
             <button
               className="button primary"

@@ -29,7 +29,7 @@ export class FfmpegRenderer implements Renderer {
           '-i', asset.absolutePath,
           '-vf', `scale=${project.settings.width}:${project.settings.height}:force_original_aspect_ratio=decrease,pad=${project.settings.width}:${project.settings.height}:(ow-iw)/2:(oh-ih)/2`,
           '-r', String(project.settings.fps),
-          '-an',
+          '-c:a', 'aac', '-ar', '48000', '-ac', '2',
           clipPath,
         ])
         clipFiles.push(clipPath)
@@ -42,7 +42,6 @@ export class FfmpegRenderer implements Renderer {
         '-y', '-v', 'error',
         '-f', 'concat', '-safe', '0',
         '-i', listPath,
-        '-an',
         '-c', 'copy',
         silentPath,
       ])
@@ -51,13 +50,27 @@ export class FfmpegRenderer implements Renderer {
         (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec),
         0,
       )
-      await execFileAsync('ffmpeg', [
-        '-y', '-v', 'error',
-        '-i', silentPath,
-        '-vf', `subtitles=${assPath}`,
-        '-c:a', 'copy',
-        outputPath,
-      ])
+      if (project.timeline.bgm) {
+        await execFileAsync('ffmpeg', [
+          '-y', '-v', 'error',
+          '-i', silentPath,
+          '-stream_loop', '-1', '-i', project.timeline.bgm.path,
+          '-filter_complex',
+          `[1:a]volume=${project.timeline.bgm.gainDb}dB[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[a]`,
+          '-vf', `subtitles=${assPath}`,
+          '-map', '0:v', '-map', '[a]',
+          '-c:a', 'aac',
+          outputPath,
+        ])
+      } else {
+        await execFileAsync('ffmpeg', [
+          '-y', '-v', 'error',
+          '-i', silentPath,
+          '-vf', `subtitles=${assPath}`,
+          '-c:a', 'copy',
+          outputPath,
+        ])
+      }
       return { outputPath, durationSec }
     } finally {
       await rm(workDir, { recursive: true, force: true })

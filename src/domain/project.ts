@@ -28,5 +28,6 @@ export interface ProjectRevision {
   project: Project
   parentRevisionId?: RevisionId
   feedback?: Feedback
+  agentNote?: string
   createdAt: string
 }

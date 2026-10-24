@@ -4,6 +4,7 @@ export interface LlmConfig {
   provider: LlmProvider
   apiKey?: string
   model?: string
+  transcribeModel?: string
   baseUrl?: string
 }
 
@@ -16,6 +17,7 @@ export function loadLlmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfig {
     provider,
     apiKey: env.PIMKO_LLM_API_KEY || undefined,
     model: env.PIMKO_LLM_MODEL || undefined,
+    transcribeModel: env.PIMKO_TRANSCRIBE_MODEL || undefined,
     baseUrl: env.PIMKO_LLM_BASE_URL || undefined,
   }
   if (provider !== 'mock' && !config.apiKey) {

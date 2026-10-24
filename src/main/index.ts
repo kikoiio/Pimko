@@ -6,17 +6,21 @@ import { FfmpegProber } from '../infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../infra/ffmpeg-renderer'
 import { FsProjectStore } from '../infra/fs-store'
 import { MockIntelligence } from '../infra/mock-intelligence'
-import { MockTranscriber } from '../infra/mock-transcriber'
+import { createIntelligence, createTranscriber } from '../infra/ai-factory'
+import { loadDotEnv } from '../infra/env'
+import { loadLlmConfig } from '../infra/llm-config'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
+const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
 
 let editor: Editor
 
 function createEditor(): Editor {
+  const config = loadLlmConfig()
   return new Editor({
     prober: new FfmpegProber(),
-    transcriber: new MockTranscriber(),
-    intelligence: new MockIntelligence(),
+    transcriber: createTranscriber(config),
+    intelligence: createIntelligence(config),
     renderer: new FfmpegRenderer(),
     store: new FsProjectStore(path.join(app.getPath('userData'), 'projects')),
   })
@@ -49,6 +53,19 @@ function registerIpc(): void {
     const outputPath = await editor.export(projectId, picked.filePath)
     return { outputPath, outputUrl: pathToFileURL(outputPath).href }
   })
+
+  ipcMain.handle('project:bgm:set', async (_event, projectId: string) => {
+    const picked = await dialog.showOpenDialog({
+      title: '选择配乐',
+      properties: ['openFile'],
+      filters: [{ name: '音频', extensions: AUDIO_EXTENSIONS }],
+    })
+    const file = picked.filePaths[0]
+    if (!file) return null
+    return editor.setBgm(projectId, file)
+  })
+
+  ipcMain.handle('project:bgm:remove', (_event, projectId: string) => editor.removeBgm(projectId))
 }
 
 function createWindow(): void {
@@ -61,9 +78,11 @@ function createWindow(): void {
 }
 
 void app.whenReady().then(() => {
+  void loadDotEnv().then(() => {
   editor = createEditor()
   registerIpc()
   createWindow()
+  })
 })
 
 app.on('window-all-closed', () => {

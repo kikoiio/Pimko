@@ -14,4 +14,6 @@ export interface PimkoApi {
   importVideo(): Promise<ImportResult | null>
   revise(projectId: string, feedback: string): Promise<ProjectRevision>
   exportVideo(projectId: string): Promise<ExportResult | null>
+  setBgm(projectId: string): Promise<ProjectRevision | null>
+  removeBgm(projectId: string): Promise<ProjectRevision>
 }

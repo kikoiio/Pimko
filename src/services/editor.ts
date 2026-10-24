@@ -60,4 +60,38 @@ export class Editor {
     const result = await this.deps.renderer.render(current.project, outputPath)
     return result.outputPath
   }
+
+  async setBgm(projectId: ProjectId, bgmPath: string, gainDb = -18): Promise<ProjectRevision> {
+    const current = await this.deps.store.latest(projectId)
+    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const revision: ProjectRevision = {
+      id: randomUUID(),
+      project: {
+        ...current.project,
+        timeline: { ...current.project.timeline, bgm: { path: bgmPath, gainDb } },
+      },
+      parentRevisionId: current.id,
+      feedback: { text: `设置配乐: ${bgmPath}` },
+      agentNote: '配乐已设置，导出时会与原声混合。',
+      createdAt: new Date().toISOString(),
+    }
+    await this.deps.store.save(revision)
+    return revision
+  }
+
+  async removeBgm(projectId: ProjectId): Promise<ProjectRevision> {
+    const current = await this.deps.store.latest(projectId)
+    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const { bgm: _removed, ...timeline } = current.project.timeline
+    const revision: ProjectRevision = {
+      id: randomUUID(),
+      project: { ...current.project, timeline },
+      parentRevisionId: current.id,
+      feedback: { text: '移除配乐' },
+      agentNote: '配乐已移除。',
+      createdAt: new Date().toISOString(),
+    }
+    await this.deps.store.save(revision)
+    return revision
+  }
 }
