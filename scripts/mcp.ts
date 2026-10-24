@@ -37,6 +37,7 @@ function revisionSummary(revision: ProjectRevision): Record<string, unknown> {
     transcriptSegments: revision.project.transcript?.segments.length ?? 0,
     silences: revision.project.silences?.length ?? 0,
     agentNote: revision.agentNote,
+    ...(revision.diff ? { diff: revision.diff } : {}),
   }
 }
 

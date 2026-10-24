@@ -104,10 +104,11 @@ export class OpenAiIntelligence implements EditingIntelligence {
   private async plan(transcript: Transcript, userMessage: string): Promise<LlmPlan | null> {
     const baseUrl = this.config.baseUrl ?? 'https://api.openai.com/v1'
     const segments = transcript.segments
-      .map(
-        (segment, index) =>
-          `${index}: ${segment.startSec.toFixed(2)}-${segment.endSec.toFixed(2)} ${segment.text}`,
-      )
+      .map((segment, index) => {
+        // 语速密度进 prompt:LLM 判断"别再加速"或"这段可以 1.3x"的依据。
+        const density = segment.text.replace(/\s/g, '').length / Math.max(0.1, segment.endSec - segment.startSec)
+        return `${index}: ${segment.startSec.toFixed(2)}-${segment.endSec.toFixed(2)}（${density.toFixed(1)}字/s） ${segment.text}`
+      })
       .join('\n')
     const body: Record<string, unknown> = {
       model: this.config.model ?? 'gpt-4o-mini',

@@ -1,11 +1,12 @@
 import type { MediaAsset } from '../domain/media'
-import type { Feedback, Project, ProjectId, ProjectRevision } from '../domain/project'
+import type { Feedback, Project, ProjectId, ProjectRevision, RevisionDiff } from '../domain/project'
+import type { TimelineClip } from '../domain/timeline'
 import { randomUUID } from 'node:crypto'
 import type { SilenceAnalyzer } from '../ports/analyzer'
 import type { EditingIntelligence } from '../ports/intelligence'
 import type { Prober } from '../ports/prober'
 import type { ProjectStore } from '../ports/store'
-import type { Renderer } from '../ports/renderer'
+import type { ExportProgress, Renderer } from '../ports/renderer'
 import type { Transcriber } from '../ports/transcriber'
 
 export interface EditorDeps {
@@ -82,6 +83,7 @@ export class Editor {
       parentRevisionId: current.id,
       feedback,
       agentNote: plan.note,
+      diff: diffTimelines(current.project.timeline.clips, plan.timeline.clips),
       createdAt: new Date().toISOString(),
     }
     await this.deps.store.save(revision)
@@ -141,13 +143,43 @@ export class Editor {
   }
 }
 
-export interface ExportProgress {
-  phase: 'cutting' | 'concatenating' | 'finalizing'
-  current: number
-  total: number
-}
+export type { ExportProgress } from '../ports/renderer'
 
 function evenDimension(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0
   return Math.round(value / 2) * 2
+}
+
+function outputDuration(clips: TimelineClip[]): number {
+  return clips.reduce((sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1), 0)
+}
+
+/** 上一版 → 新版的可读对比:按源区间匹配片段,统计增/删/移/变速与时长变化。 */
+function diffTimelines(previous: TimelineClip[], next: TimelineClip[]): RevisionDiff {
+  const key = (clip: TimelineClip) => `${clip.assetId}:${clip.sourceStartSec.toFixed(2)}-${clip.sourceEndSec.toFixed(2)}`
+  const previousIndex = new Map(previous.map((clip, index) => [key(clip), index]))
+  const nextIndex = new Map(next.map((clip, index) => [key(clip), index]))
+  let added = 0
+  let removed = 0
+  let moved = 0
+  let spedUp = 0
+  for (const [clipKey, index] of nextIndex) {
+    const before = previousIndex.get(clipKey)
+    if (before === undefined) {
+      added += 1
+      continue
+    }
+    if (before !== index) moved += 1
+    if ((previous[before]!.speed ?? 1) !== (next[index]!.speed ?? 1)) spedUp += 1
+  }
+  for (const clipKey of previousIndex.keys()) {
+    if (!nextIndex.has(clipKey)) removed += 1
+  }
+  return {
+    added,
+    removed,
+    moved,
+    spedUp,
+    durationDeltaSec: Number((outputDuration(next) - outputDuration(previous)).toFixed(2)),
+  }
 }

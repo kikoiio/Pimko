@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectRevision } from '../../domain/project'
+import { findFillerWords } from '../../domain/fillers'
 import type { ExportProgress, ExportResult, ImportResult, PimkoApi, ProjectSummary } from '../../shared/api'
 
 declare global {
@@ -78,6 +79,12 @@ export function App() {
 
   const clips = revision?.project.timeline.clips ?? []
   const timelineEntries = useMemo(() => (revision ? buildTimeline(revision) : []), [revision])
+  // 卡片标记:片段内残留的口癖与未压缩长停顿——被 LLM 处理掉后标记自然消失。
+  const fillerHits = useMemo(
+    () => (revision?.project.transcript ? findFillerWords(revision.project.transcript) : []),
+    [revision],
+  )
+  const silences = revision?.project.silences ?? []
 
   useEffect(() => {
     void window.pimko.listProjects().then(setProjects).catch(() => setProjects([]))
@@ -152,9 +159,18 @@ export function App() {
       setLiveSubtitle('')
       const delta = totalDuration(next) - before
       const deltaText = delta === 0 ? '时长不变' : `${delta > 0 ? '+' : ''}${fmt(delta)}`
+      const diffParts = next.diff
+        ? [
+            next.diff.added > 0 ? `+${next.diff.added}段` : '',
+            next.diff.removed > 0 ? `-${next.diff.removed}段` : '',
+            next.diff.moved > 0 ? `${next.diff.moved}段移位` : '',
+            next.diff.spedUp > 0 ? `${next.diff.spedUp}段变速` : '',
+          ].filter(Boolean).join('，')
+        : ''
+      const diffText = diffParts ? `（${diffParts}）` : ''
       const note = next.agentNote
-        ? `${next.agentNote}（${fmt(totalDuration(next))}，${deltaText}）`
-        : `改好了：${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}（${deltaText}）。`
+        ? `${next.agentNote}${diffText}（${fmt(totalDuration(next))}，${deltaText}）`
+        : `改好了：${next.project.timeline.clips.length} 段${diffText}，${fmt(totalDuration(next))}（${deltaText}）。`
       pushAgent(note)
     } catch (err) {
       setError(friendlyError(err))
@@ -320,7 +336,9 @@ export function App() {
             ? `正在裁切片段 ${exportProgress.current}/${exportProgress.total}…`
             : exportProgress.phase === 'concatenating'
               ? '正在拼接片段…'
-              : '正在生成成片…'}
+              : exportProgress.phase === 'verifying'
+                ? '正在校验成片…'
+                : '正在生成成片…'}
         </div>
       )}
 
@@ -425,6 +443,16 @@ export function App() {
         <footer className="clipbar" aria-label="时间线片段">
           {clips.map((clip, index) => {
             const length = clip.sourceEndSec - clip.sourceStartSec
+            const fillerCount = fillerHits.filter(
+              (hit) => hit.startSec >= clip.sourceStartSec && hit.endSec <= clip.sourceEndSec,
+            ).length
+            const pauseSec = silences
+              .filter((interval) => interval.endSec - interval.startSec >= 0.6)
+              .reduce(
+                (sum, interval) =>
+                  sum + Math.max(0, Math.min(interval.endSec, clip.sourceEndSec) - Math.max(interval.startSec, clip.sourceStartSec)),
+                0,
+              )
             return (
               <button
                 key={`${clip.assetId}-${clip.sourceStartSec}`}
@@ -444,6 +472,8 @@ export function App() {
                     ? `${(length / clip.speed).toFixed(1)}s @ ${clip.speed}x`
                     : `${length.toFixed(1)}s`}
                 </span>
+                {fillerCount > 0 && <span className="clip-flag">口癖×{fillerCount}</span>}
+                {pauseSec >= 0.6 && <span className="clip-flag">停顿{pauseSec.toFixed(1)}s</span>}
               </button>
             )
           })}

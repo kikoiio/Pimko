@@ -29,11 +29,26 @@ export interface Feedback {
   text: string
 }
 
+export interface RevisionDiff {
+  /** 相对上一版:新增片段数。 */
+  added: number
+  /** 相对上一版:删除片段数。 */
+  removed: number
+  /** 位置发生变化的片段数。 */
+  moved: number
+  /** 速度发生变化的片段数。 */
+  spedUp: number
+  /** 成片时长变化(秒,负数为变短)。 */
+  durationDeltaSec: number
+}
+
 export interface ProjectRevision {
   id: RevisionId
   project: Project
   parentRevisionId?: RevisionId
   feedback?: Feedback
   agentNote?: string
+  /** 相对上一版的可读对比;首个草稿没有。 */
+  diff?: RevisionDiff
   createdAt: string
 }

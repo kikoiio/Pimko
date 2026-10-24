@@ -402,6 +402,16 @@ button {
   font-size: 12px;
 }
 
+/* 口癖/停顿残留提示:LLM 处理掉后标记自然消失 */
+.clip-flag {
+  font-size: 11px;
+  color: var(--warn, #b8860b);
+  background: color-mix(in srgb, var(--warn, #b8860b) 12%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

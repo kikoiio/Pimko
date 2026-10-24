@@ -90,6 +90,24 @@ export class FfmpegRenderer implements Renderer {
         ])
       }
       onProgress?.({ phase: 'finalizing', current: 1, total: 1 })
+      // 渲染后自检：时长/分辨率与时间线核对,不把坏成片交给用户。
+      onProgress?.({ phase: 'verifying', current: 1, total: 1 })
+      const { stdout } = await execFileAsync('ffprobe', [
+        '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', outputPath,
+      ])
+      const probe = JSON.parse(stdout) as {
+        format?: { duration?: string }
+        streams?: { codec_type?: string; width?: number; height?: number }[]
+      }
+      const actualDuration = Number(probe.format?.duration)
+      const videoStream = probe.streams?.find((stream) => stream.codec_type === 'video')
+      const tolerance = Math.max(0.6, durationSec * 0.06)
+      if (!Number.isFinite(actualDuration) || Math.abs(actualDuration - durationSec) > tolerance) {
+        throw new Error(`导出校验失败：成片时长 ${actualDuration.toFixed(2)}s 与时间线 ${durationSec.toFixed(2)}s 不符，请重试导出。`)
+      }
+      if (videoStream?.width !== project.settings.width || videoStream?.height !== project.settings.height) {
+        throw new Error(`导出校验失败：成片分辨率 ${videoStream?.width ?? '?'}x${videoStream?.height ?? '?'} 与项目设置不符，请重试导出。`)
+      }
       return { outputPath, durationSec }
     } finally {
       await rm(workDir, { recursive: true, force: true })

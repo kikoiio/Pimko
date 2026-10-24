@@ -1,7 +1,7 @@
 import type { Project } from '../domain/project'
 
 export interface ExportProgress {
-  phase: 'cutting' | 'concatenating' | 'finalizing'
+  phase: 'cutting' | 'concatenating' | 'finalizing' | 'verifying'
   current: number
   total: number
 }
