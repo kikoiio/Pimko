@@ -57,7 +57,7 @@ async function main(): Promise<void> {
     const stageFits = videoBox && stageBox
       ? videoBox.width <= stageBox.width + 1 && videoBox.height <= stageBox.height + 1
       : false
-    const screenshot = await page.screenshot({ path: path.join(tmpDir, 'pimko-e2e.png') })
+    await page.screenshot({ path: path.join(tmpDir, 'pimko-e2e.png') })
     await writeFile(path.join(tmpDir, 'pimko-e2e-result.json'), `${JSON.stringify({
       status,
       agentBubbles,
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       stageFits,
     }, null, 2)}\n`)
 
-    console.log(`screenshot: ${screenshot}`)
+    console.log(`screenshot: ${path.join(tmpDir, 'pimko-e2e.png')}`)
 
     if (status.videoWidth === 0 || status.readyState < 2) {
       throw new Error(`视频未真正加载: ${JSON.stringify(status)}`)

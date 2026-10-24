@@ -175,7 +175,8 @@ button {
 }
 
 .video-wrap video {
-  height: 100%;
+  width: auto;
+  height: auto;
   max-height: 100%;
   max-width: 100%;
   object-fit: contain;
