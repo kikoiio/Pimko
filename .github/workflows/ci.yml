@@ -81,10 +81,10 @@ jobs:
         env:
           PIMKO_E2E_VIDEO: ${{ github.workspace }}/sample-assets/voice.mp4
           PIMKO_LLM_PROVIDER: openai
-          PIMKO_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          PIMKO_LLM_API_KEY: ${{ secrets.OPENROUTER_LLM_API_KEY }}
           PIMKO_LLM_MODEL: ${{ matrix.model }}
           PIMKO_TRANSCRIBE_MODEL: ${{ vars.PIMKO_TRANSCRIBE_MODEL }}
-          PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.PIMKO_GROQ_API_KEY }}
+          PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.GROQ_LLM_API_KEY }}
           PIMKO_TRANSCRIBE_BASE_URL: ${{ vars.PIMKO_TRANSCRIBE_BASE_URL }}
           PIMKO_LLM_BASE_URL: ${{ vars.PIMKO_LLM_BASE_URL }}
       - name: Upload E2E artifacts
