@@ -1,0 +1,58 @@
+name: Boundary test corpus
+
+on:
+  workflow_dispatch:
+    inputs:
+      extended:
+        description: Include short 4K and five-minute fixtures
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'scripts/*boundar*.ts'
+      - '.github/workflows/boundaries.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: mkdir -p .tmp
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg fonts-noto-cjk
+      - run: npm ci
+      - name: Typecheck boundary tools
+        run: >-
+          npx tsc --noEmit --strict --noUncheckedIndexedAccess --target ES2022
+          --module ESNext --moduleResolution bundler --lib ES2022,DOM --types node,electron
+          --skipLibCheck --allowSyntheticDefaultImports
+          scripts/boundary-cases.ts scripts/make-boundaries.ts scripts/check-boundaries.ts
+      - name: Generate corpus
+        env:
+          EXTENDED: ${{ inputs.extended || github.event_name == 'pull_request' }}
+        run: |
+          if [ "$EXTENDED" = "true" ]; then
+            npm run fixtures:boundaries -- --extended
+          else
+            npm run fixtures:boundaries
+          fi
+      - name: Validate properties and supported render paths
+        run: npm run check:boundaries -- --render
+      - name: Upload test-only videos and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pimko-boundary-corpus
+          path: sample-assets/boundaries/
+          retention-days: 7
+          if-no-files-found: warn
