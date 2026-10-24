@@ -53,9 +53,7 @@ jobs:
       fail-fast: false
       matrix:
         model:
-          - nvidia/nemotron-3-ultra-550b-a55b:free
-          - nvidia/nemotron-3-super-120b-a12b:free
-          - google/gemma-4-31b-it:free
+          - ${{ vars.PIMKO_LLM_MODEL }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -85,8 +83,10 @@ jobs:
           PIMKO_LLM_PROVIDER: openai
           PIMKO_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           PIMKO_LLM_MODEL: ${{ matrix.model }}
-          PIMKO_TRANSCRIBE_MODEL: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
-          PIMKO_LLM_BASE_URL: https://openrouter.ai/api/v1
+          PIMKO_TRANSCRIBE_MODEL: ${{ vars.PIMKO_TRANSCRIBE_MODEL }}
+          PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.PIMKO_GROQ_API_KEY }}
+          PIMKO_TRANSCRIBE_BASE_URL: ${{ vars.PIMKO_TRANSCRIBE_BASE_URL }}
+          PIMKO_LLM_BASE_URL: ${{ vars.PIMKO_LLM_BASE_URL }}
       - name: Upload E2E artifacts
         uses: actions/upload-artifact@v4
         if: always()
