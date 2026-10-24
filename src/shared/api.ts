@@ -1,4 +1,7 @@
 import type { ProjectRevision } from '../domain/project'
+import type { ExportProgress } from '../ports/renderer'
+
+export type { ExportProgress }
 
 export interface ImportResult {
   revision: ProjectRevision
@@ -10,10 +13,23 @@ export interface ExportResult {
   outputUrl: string
 }
 
+export interface ProjectSummary {
+  projectId: string
+  name: string
+  revisionId: string
+  updatedAt: string
+  clipCount: number
+  durationSec: number
+  sourceUrl: string
+}
+
 export interface PimkoApi {
   importVideo(): Promise<ImportResult | null>
+  listProjects(): Promise<ProjectSummary[]>
+  restoreProject(projectId: string): Promise<ImportResult>
   revise(projectId: string, feedback: string): Promise<ProjectRevision>
   exportVideo(projectId: string): Promise<ExportResult | null>
+  onExportProgress(listener: (progress: ExportProgress) => void): void
   setBgm(projectId: string): Promise<ProjectRevision | null>
   removeBgm(projectId: string): Promise<ProjectRevision>
 }

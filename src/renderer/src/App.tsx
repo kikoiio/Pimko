@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectRevision } from '../../domain/project'
-import type { ExportResult, ImportResult, PimkoApi } from '../../shared/api'
+import type { ExportProgress, ExportResult, ImportResult, PimkoApi, ProjectSummary } from '../../shared/api'
 
 declare global {
   interface Window {
@@ -34,6 +34,31 @@ function fmt(seconds: number): string {
   return `${seconds.toFixed(1)} 秒`
 }
 
+interface TimelineEntry {
+  clipIndex: number
+  outputStart: number
+  outputEnd: number
+}
+
+function buildTimeline(revision: ProjectRevision): TimelineEntry[] {
+  let outputStart = 0
+  return revision.project.timeline.clips.map((clip, clipIndex) => {
+    const length = Math.max(0, clip.sourceEndSec - clip.sourceStartSec)
+    const entry = { clipIndex, outputStart, outputEnd: outputStart + length }
+    outputStart += length
+    return entry
+  })
+}
+
+function friendlyError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  if (raw.includes('401')) return 'API Key 无效或已过期，请检查 .env 里的 key。'
+  if (raw.includes('402')) return '当前模型/音频接口需要账户余额，免费额度不够用。'
+  if (raw.includes('429')) return '请求太频繁，免费模型限流了；稍等一会儿再试。'
+  if (raw.includes('Failed to fetch') || raw.includes('fetch failed')) return '网络请求失败，请检查网络后重试。'
+  return raw
+}
+
 export function App() {
   const [stage, setStage] = useState<Stage>('idle')
   const [revision, setRevision] = useState<ProjectRevision | null>(null)
@@ -44,11 +69,20 @@ export function App() {
   const [feedback, setFeedback] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [liveSubtitle, setLiveSubtitle] = useState('')
+  const [projects, setProjects] = useState<ProjectSummary[]>([])
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const activeClipRef = useRef(0)
+  const seekingRef = useRef(false)
 
   const clips = revision?.project.timeline.clips ?? []
+  const timelineEntries = useMemo(() => (revision ? buildTimeline(revision) : []), [revision])
+
+  useEffect(() => {
+    void window.pimko.listProjects().then(setProjects).catch(() => setProjects([]))
+    window.pimko.onExportProgress(setExportProgress)
+  }, [])
 
   function pushAgent(text: string): void {
     setMessages((prev) => [...prev, { id: nextMessageId(), role: 'agent', text }])
@@ -73,8 +107,32 @@ export function App() {
       const count = result.revision.project.timeline.clips.length
       pushAgent(`草稿好了：${count} 段，共 ${fmt(totalDuration(result.revision))}。看看哪里不顺，直接告诉我。`)
       setStage('ready')
+      void window.pimko.listProjects().then(setProjects).catch(() => undefined)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(friendlyError(err))
+      setStage('idle')
+    }
+  }
+
+  async function handleRestore(projectId: string): Promise<void> {
+    setError(null)
+    setStage('drafting')
+    try {
+      const result = await window.pimko.restoreProject(projectId)
+      setRevision(result.revision)
+      setSourceUrl(result.sourceUrl)
+      setOutput(null)
+      setPreviewMode('draft')
+      activeClipRef.current = 0
+      setLiveSubtitle('')
+      setMessages([{
+        id: nextMessageId(),
+        role: 'agent',
+        text: `已恢复「${result.revision.project.name}」。继续看看哪里不顺，直接告诉我。`,
+      }])
+      setStage('ready')
+    } catch (err) {
+      setError(friendlyError(err))
       setStage('idle')
     }
   }
@@ -99,7 +157,7 @@ export function App() {
         : `改好了：${next.project.timeline.clips.length} 段，${fmt(totalDuration(next))}（${deltaText}）。`
       pushAgent(note)
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(friendlyError(err))
     }
   }
 
@@ -115,7 +173,7 @@ export function App() {
         pushAgent(next.agentNote ?? '配乐已设置。')
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(friendlyError(err))
     }
   }
 
@@ -130,7 +188,7 @@ export function App() {
       setLiveSubtitle('')
       pushAgent(next.agentNote ?? '配乐已移除。')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(friendlyError(err))
     }
   }
 
@@ -138,6 +196,7 @@ export function App() {
     if (!revision) return
     setError(null)
     setStage('exporting')
+    setExportProgress(null)
     try {
       const result = await window.pimko.exportVideo(revision.project.id)
       if (result) {
@@ -146,9 +205,10 @@ export function App() {
         pushAgent(`成片已导出：${result.outputPath}`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(friendlyError(err))
     } finally {
       setStage('ready')
+      setExportProgress(null)
     }
   }
 
@@ -160,6 +220,20 @@ export function App() {
     void videoRef.current.play()
   }
 
+  function entryForSourceTime(time: number): TimelineEntry | undefined {
+    return timelineEntries.find((entry) => {
+      const clip = clips[entry.clipIndex]!
+      return time >= clip.sourceStartSec && time < clip.sourceEndSec
+    })
+  }
+
+  function handleSeeked(): void {
+    seekingRef.current = false
+    if (!videoRef.current || previewMode !== 'draft') return
+    const entry = entryForSourceTime(videoRef.current.currentTime)
+    if (entry) activeClipRef.current = entry.clipIndex
+  }
+
   function handleTimeUpdate(): void {
     if (!videoRef.current) return
     const time = videoRef.current.currentTime
@@ -167,8 +241,17 @@ export function App() {
       setLiveSubtitle('')
       return
     }
-    const cue = revision.project.timeline.subtitles.find((c) => time >= c.startSec && time < c.endSec)
+    const entry = timelineEntries[activeClipRef.current]
+    const activeClip = entry ? clips[entry.clipIndex] : undefined
+    if (!activeClip) {
+      setLiveSubtitle('')
+      return
+    }
+    const cue = revision.project.timeline.subtitles.find(
+      (c) => Math.max(c.startSec, activeClip.sourceStartSec) < Math.min(c.endSec, activeClip.sourceEndSec),
+    )
     setLiveSubtitle(cue?.text ?? '')
+    if (seekingRef.current) return
     const clip = clips[activeClipRef.current]
     if (!clip) return
     if (videoRef.current.currentTime >= clip.sourceEndSec) {
@@ -208,7 +291,11 @@ export function App() {
               onClick={() => void handleExport()}
               disabled={stage !== 'ready'}
             >
-              {stage === 'exporting' ? '正在生成成片…' : '生成成片'}
+              {stage === 'exporting'
+                ? exportProgress
+                  ? `导出中 ${exportProgress.current}/${exportProgress.total}`
+                  : '正在导出…'
+                : '生成成片'}
             </button>
           )}
           <button
@@ -222,6 +309,15 @@ export function App() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {stage === 'exporting' && exportProgress && (
+        <div className="export-progress">
+          {exportProgress.phase === 'cutting'
+            ? `正在裁切片段 ${exportProgress.current}/${exportProgress.total}…`
+            : exportProgress.phase === 'concatenating'
+              ? '正在拼接片段…'
+              : '正在生成成片…'}
+        </div>
+      )}
 
       {stage === 'idle' && !revision ? (
         <main className="empty">
@@ -232,6 +328,19 @@ export function App() {
               选择视频
             </button>
           </div>
+          {projects.length > 0 && (
+            <div className="recent-projects">
+              <h2>最近项目</h2>
+              <div className="project-list">
+                {projects.map((project) => (
+                  <button key={project.projectId} className="project-card" onClick={() => void handleRestore(project.projectId)}>
+                    <span className="project-name">{project.name}</span>
+                    <span className="project-meta">{project.clipCount} 段 · {fmt(project.durationSec)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </main>
       ) : (
         <main className="workspace">
@@ -245,6 +354,8 @@ export function App() {
                 controls
                 playsInline
                 onTimeUpdate={handleTimeUpdate}
+                onSeeking={() => { seekingRef.current = true }}
+                onSeeked={handleSeeked}
               />
                 {previewMode === 'draft' && liveSubtitle && (
                   <div className="subtitle-overlay">{liveSubtitle}</div>

@@ -21,7 +21,10 @@ export class Editor {
   async createDraft(videoPath: string, name?: string): Promise<ProjectRevision> {
     const asset = await this.deps.prober.probe(videoPath)
     const transcript = await this.deps.transcriber.transcribe(asset)
-    const settings = { width: 1080, height: 1920, fps: 30, subtitleStyle: 'bold-center' as const }
+    const width = evenDimension(asset.width ?? 1080)
+    const height = evenDimension(asset.height ?? 1920)
+    if (width === 0 || height === 0) throw new Error('无法读取视频尺寸，导出前需要有效的宽高。')
+    const settings = { width, height, fps: 30, subtitleStyle: 'bold-center' as const }
     const plan = await this.deps.intelligence.draftTimeline(transcript, settings)
     const project: Project = {
       id: randomUUID(),
@@ -41,6 +44,16 @@ export class Editor {
     return revision
   }
 
+  async listProjects(): Promise<ProjectRevision[]> {
+    const revisions = await this.deps.store.list()
+    const byProject = new Map<string, ProjectRevision>()
+    for (const revision of revisions) {
+      const current = byProject.get(revision.project.id)
+      if (!current || revision.createdAt > current.createdAt) byProject.set(revision.project.id, revision)
+    }
+    return [...byProject.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }
+
   async revise(projectId: ProjectId, feedback: Feedback): Promise<ProjectRevision> {
     const current = await this.deps.store.latest(projectId)
     if (!current) throw new Error(`项目不存在: ${projectId}`)
@@ -57,10 +70,18 @@ export class Editor {
     return revision
   }
 
-  async export(projectId: ProjectId, outputPath: string): Promise<string> {
+  async restore(projectId: ProjectId): Promise<ProjectRevision | undefined> {
+    return this.deps.store.latest(projectId)
+  }
+
+  async export(
+    projectId: ProjectId,
+    outputPath: string,
+    onProgress?: (progress: ExportProgress) => void,
+  ): Promise<string> {
     const current = await this.deps.store.latest(projectId)
     if (!current) throw new Error(`项目不存在: ${projectId}`)
-    const result = await this.deps.renderer.render(current.project, outputPath)
+    const result = await this.deps.renderer.render(current.project, outputPath, onProgress)
     return result.outputPath
   }
 
@@ -97,4 +118,15 @@ export class Editor {
     await this.deps.store.save(revision)
     return revision
   }
+}
+
+export interface ExportProgress {
+  phase: 'cutting' | 'concatenating' | 'finalizing'
+  current: number
+  total: number
+}
+
+function evenDimension(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0
+  return Math.round(value / 2) * 2
 }

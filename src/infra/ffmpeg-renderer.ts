@@ -4,12 +4,16 @@ import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { Project } from '../domain/project'
-import type { RenderResult, Renderer } from '../ports/renderer'
+import type { ExportProgress, RenderResult, Renderer } from '../ports/renderer'
 
 const execFileAsync = promisify(execFile)
 
 export class FfmpegRenderer implements Renderer {
-  async render(project: Project, outputPath: string): Promise<RenderResult> {
+  async render(
+    project: Project,
+    outputPath: string,
+    onProgress?: (progress: ExportProgress) => void,
+  ): Promise<RenderResult> {
     const assetById = new Map(project.assets.map((asset) => [asset.id, asset]))
     const workDir = await mkdtemp(path.join(tmpdir(), 'pimko-render-'))
     try {
@@ -33,6 +37,7 @@ export class FfmpegRenderer implements Renderer {
           clipPath,
         ])
         clipFiles.push(clipPath)
+        onProgress?.({ phase: 'cutting', current: index + 1, total: project.timeline.clips.length })
       }
 
       const listPath = path.join(workDir, 'concat.txt')
@@ -45,6 +50,7 @@ export class FfmpegRenderer implements Renderer {
         '-c', 'copy',
         silentPath,
       ])
+      onProgress?.({ phase: 'concatenating', current: 1, total: 1 })
 
       const durationSec = project.timeline.clips.reduce(
         (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec),
@@ -71,6 +77,7 @@ export class FfmpegRenderer implements Renderer {
           outputPath,
         ])
       }
+      onProgress?.({ phase: 'finalizing', current: 1, total: 1 })
       return { outputPath, durationSec }
     } finally {
       await rm(workDir, { recursive: true, force: true })
@@ -93,16 +100,17 @@ function buildAss(project: Project): string {
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ].join('\n')
 
-  // 时间线坐标是源素材时间；clip 顺次拼接后按 clip 偏移到输出时间轴。
+    // 字幕与 clip 部分重叠时裁剪到 clip 内，避免 LLM 微调边界后整句丢失。
   const events: string[] = []
   let outputStart = 0
   for (const clip of project.timeline.clips) {
     const length = clip.sourceEndSec - clip.sourceStartSec
     for (const cue of project.timeline.subtitles) {
-      if (cue.startSec >= clip.sourceStartSec && cue.endSec <= clip.sourceEndSec) {
-        const offset = cue.startSec - clip.sourceStartSec
+        const overlapStart = Math.max(cue.startSec, clip.sourceStartSec)
+        const overlapEnd = Math.min(cue.endSec, clip.sourceEndSec)
+        if (overlapStart < overlapEnd) {
         events.push(
-          `Dialogue: 0,${toAssTime(outputStart + offset)},${toAssTime(outputStart + offset + (cue.endSec - cue.startSec))},Default,,0,0,0,,${cue.text}`,
+              `Dialogue: 0,${toAssTime(outputStart + overlapStart - clip.sourceStartSec)},${toAssTime(outputStart + overlapEnd - clip.sourceStartSec)},Default,,0,0,0,,${cue.text}`,
         )
       }
     }

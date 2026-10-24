@@ -83,6 +83,13 @@ async function main(): Promise<void> {
     if (agentBubbles < 1 || clips < 1) {
       throw new Error(`草稿 UI 未渲染: bubbles=${agentBubbles} clips=${clips}`)
     }
+    const restored = await page.evaluate(async () => {
+      const list = await window.pimko.listProjects()
+      if (list.length === 0) return { ok: false, reason: 'no projects' }
+      const result = await window.pimko.restoreProject(list[0]!.projectId)
+      return { ok: result.revision.project.timeline.clips.length > 0, projectId: list[0]!.projectId }
+    })
+    if (!restored.ok) throw new Error(`项目恢复失败: ${JSON.stringify(restored)}`)
     if (!stageFits) {
       throw new Error(`视频超出预览区: video=${JSON.stringify(videoBox)} stage=${JSON.stringify(stageBox)}`)
     }

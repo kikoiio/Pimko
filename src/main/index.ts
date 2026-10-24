@@ -10,11 +10,14 @@ import { createIntelligence, createTranscriber } from '../infra/ai-factory'
 import { loadDotEnv } from '../infra/env'
 import { loadLlmConfig } from '../infra/llm-config'
 import type { LlmConfig } from '../infra/llm-config'
+import type { ExportProgress } from '../ports/renderer'
+import type { ProjectSummary } from '../shared/api'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
 
 let editor: Editor
+let mainWindow: BrowserWindow | undefined
 
 // 必须在 app ready 前注册：stream 让 <video> 支持 Range 请求，否则只能拿到无法播放的整段响应。
 protocol.registerSchemesAsPrivileged([
@@ -74,18 +77,49 @@ function registerIpc(): void {
     return { revision, sourceUrl: mediaUrl(pathToFileURL(file).href) }
   })
 
+  ipcMain.handle('project:list', async (): Promise<ProjectSummary[]> => {
+    const revisions = await editor.listProjects()
+    return revisions.map((revision) => {
+      const asset = revision.project.assets[0]
+      return {
+        projectId: revision.project.id,
+        name: revision.project.name,
+        revisionId: revision.id,
+        updatedAt: revision.createdAt,
+        clipCount: revision.project.timeline.clips.length,
+        durationSec: revision.project.timeline.clips.reduce(
+          (sum, clip) => sum + clip.sourceEndSec - clip.sourceStartSec,
+          0,
+        ),
+        sourceUrl: asset ? mediaUrl(pathToFileURL(asset.absolutePath).href) : '',
+      }
+    })
+  })
+
+  ipcMain.handle('project:restore', async (_event, projectId: string) => {
+    const revision = await editor.restore(projectId)
+    if (!revision) throw new Error(`项目不存在: ${projectId}`)
+    const asset = revision.project.assets[0]
+    if (!asset) throw new Error('项目没有素材，无法恢复。')
+    return { revision, sourceUrl: mediaUrl(pathToFileURL(asset.absolutePath).href) }
+  })
+
   ipcMain.handle('project:revise', async (_event, projectId: string, feedback: string) => {
     return editor.revise(projectId, { text: feedback })
   })
 
   ipcMain.handle('project:export', async (_event, projectId: string) => {
+    // ffmpeg 输出不含结构化进度；先发一个整体阶段事件，UI 有明确反馈。
+    mainWindow?.webContents.send('export:progress', { phase: 'cutting', current: 0, total: 1 })
     const picked = await dialog.showSaveDialog({
       title: '导出成片',
       defaultPath: 'pimko-成片.mp4',
       filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
     })
     if (picked.canceled || !picked.filePath) return null
-    const outputPath = await editor.export(projectId, picked.filePath)
+    const outputPath = await editor.export(projectId, picked.filePath, (progress: ExportProgress) => {
+      mainWindow?.webContents.send('export:progress', progress)
+    })
     return { outputPath, outputUrl: mediaUrl(pathToFileURL(outputPath).href) }
   })
 
@@ -113,6 +147,10 @@ function createWindow(): void {
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
     },
+  })
+  mainWindow = win
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = undefined
   })
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
