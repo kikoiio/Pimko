@@ -6,13 +6,16 @@ const api: PimkoApi = {
   listProjects: () => ipcRenderer.invoke('project:list'),
   restoreProject: (projectId) => ipcRenderer.invoke('project:restore', projectId),
   revise: (projectId, feedback) => ipcRenderer.invoke('project:revise', projectId, feedback),
+  undo: (projectId) => ipcRenderer.invoke('project:undo', projectId),
   exportVideo: (projectId) => ipcRenderer.invoke('project:export', projectId),
   onExportProgress: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: import('../ports/renderer').ExportProgress) => listener(progress)
     ipcRenderer.on('export:progress', handler)
   },
   setBgm: (projectId) => ipcRenderer.invoke('project:bgm:set', projectId),
+  setBgmVolume: (projectId, gainDb) => ipcRenderer.invoke('project:bgm:volume', projectId, gainDb),
   removeBgm: (projectId) => ipcRenderer.invoke('project:bgm:remove', projectId),
+  getClipThumbnail: (projectId, index) => ipcRenderer.invoke('clip:thumbnail', projectId, index),
 }
 
 contextBridge.exposeInMainWorld('pimko', api)

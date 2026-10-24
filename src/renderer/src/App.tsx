@@ -18,6 +18,12 @@ interface ChatMessage {
 type Stage = 'idle' | 'drafting' | 'ready' | 'exporting'
 type PreviewMode = 'draft' | 'output'
 
+const BGM_PRESETS = [
+  { label: '轻', gainDb: -24 },
+  { label: '标准', gainDb: -18 },
+  { label: '响', gainDb: -12 },
+]
+
 let messageSeq = 0
 function nextMessageId(): string {
   messageSeq += 1
@@ -72,6 +78,7 @@ export function App() {
   const [liveSubtitle, setLiveSubtitle] = useState('')
   const [projects, setProjects] = useState<ProjectSummary[]>([])
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null)
+  const [thumbnails, setThumbnails] = useState<Record<number, string>>({})
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const activeClipRef = useRef(0)
@@ -85,6 +92,24 @@ export function App() {
     [revision],
   )
   const silences = revision?.project.silences ?? []
+
+  // 修订变化后重新取片段缩略图(带主进程磁盘缓存);上限 30 张防长片刷爆。
+  useEffect(() => {
+    if (!revision) return
+    let cancelled = false
+    setThumbnails({})
+    void Promise.all(
+      revision.project.timeline.clips.slice(0, 30).map(async (clip, index) => {
+        const url = await window.pimko.getClipThumbnail(revision.project.id, index)
+        return [index, url] as const
+      }),
+    ).then((entries) => {
+      if (!cancelled) setThumbnails(Object.fromEntries(entries.filter((entry) => entry[1])) as Record<number, string>)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [revision])
 
   useEffect(() => {
     void window.pimko.listProjects().then(setProjects).catch(() => setProjects([]))
@@ -172,6 +197,32 @@ export function App() {
         ? `${next.agentNote}${diffText}（${fmt(totalDuration(next))}，${deltaText}）`
         : `改好了：${next.project.timeline.clips.length} 段${diffText}，${fmt(totalDuration(next))}（${deltaText}）。`
       pushAgent(note)
+    } catch (err) {
+      setError(friendlyError(err))
+    }
+  }
+
+  async function handleUndo(): Promise<void> {
+    if (!revision) return
+    setError(null)
+    try {
+      const next = await window.pimko.undo(revision.project.id)
+      setRevision(next)
+      setOutput(null)
+      setPreviewMode('draft')
+      pushAgent(next.agentNote ?? '已撤销上一步。')
+    } catch (err) {
+      setError(friendlyError(err))
+    }
+  }
+
+  async function handleBgmVolume(gainDb: number): Promise<void> {
+    if (!revision) return
+    setError(null)
+    try {
+      const next = await window.pimko.setBgmVolume(revision.project.id, gainDb)
+      setRevision(next)
+      pushAgent(next.agentNote ?? '配乐音量已调整。')
     } catch (err) {
       setError(friendlyError(err))
     }
@@ -295,11 +346,30 @@ export function App() {
           Pimko
         </div>
         <div className="topbar-actions">
+          {revision?.parentRevisionId && (
+            <button className="button" onClick={() => void handleUndo()} disabled={stage !== 'ready'}>
+              撤销上一步
+            </button>
+          )}
           {revision && (
             revision.project.timeline.bgm ? (
-              <button className="button" onClick={() => void handleRemoveBgm()} disabled={stage !== 'ready'}>
-                移除配乐
-              </button>
+              <>
+                <div className="bgm-volume" role="group" aria-label="配乐音量">
+                  {BGM_PRESETS.map((preset) => (
+                    <button
+                      key={preset.gainDb}
+                      className={`button small${Math.abs((revision.project.timeline.bgm?.gainDb ?? -18) - preset.gainDb) < 1 ? ' active' : ''}`}
+                      onClick={() => void handleBgmVolume(preset.gainDb)}
+                      disabled={stage !== 'ready'}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <button className="button" onClick={() => void handleRemoveBgm()} disabled={stage !== 'ready'}>
+                  移除配乐
+                </button>
+              </>
             ) : (
               <button className="button" onClick={() => void handleSetBgm()} disabled={stage !== 'ready'}>
                 添加配乐
@@ -464,6 +534,9 @@ export function App() {
                 title={`第 ${index + 1} 段 · ${clip.sourceStartSec.toFixed(1)}s – ${clip.sourceEndSec.toFixed(1)}s`}
               >
                 <span className="clip-index">{index + 1}</span>
+                {thumbnails[index] && (
+                  <span className="clip-thumb" style={{ backgroundImage: `url(${thumbnails[index]})` }} aria-hidden />
+                )}
                 <span className="clip-time">
                   {clip.sourceStartSec.toFixed(1)}–{clip.sourceEndSec.toFixed(1)}s
                 </span>

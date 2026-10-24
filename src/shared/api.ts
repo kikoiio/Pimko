@@ -28,8 +28,11 @@ export interface PimkoApi {
   listProjects(): Promise<ProjectSummary[]>
   restoreProject(projectId: string): Promise<ImportResult>
   revise(projectId: string, feedback: string): Promise<ProjectRevision>
+  undo(projectId: string): Promise<ProjectRevision>
   exportVideo(projectId: string): Promise<ExportResult | null>
   onExportProgress(listener: (progress: ExportProgress) => void): void
   setBgm(projectId: string): Promise<ProjectRevision | null>
+  setBgmVolume(projectId: string, gainDb: number): Promise<ProjectRevision>
   removeBgm(projectId: string): Promise<ProjectRevision>
+  getClipThumbnail(projectId: string, index: number): Promise<string | null>
 }

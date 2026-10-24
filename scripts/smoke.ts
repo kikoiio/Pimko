@@ -105,6 +105,25 @@ async function main(): Promise<void> {
       throw new Error(`变速导出时长不符: expected=${expected.toFixed(2)}s got=${speedDuration.toFixed(2)}s`)
     }
     console.log(`speed export ok: ${speedDuration.toFixed(2)}s (expected ${expected.toFixed(2)}s)`)
+
+    // 撤销:回到变速前的时间线,速度标记应消失。
+    const undone = await editor.undo(spedUp.project.id)
+    if (undone.project.timeline.clips[0]?.speed !== undefined) {
+      throw new Error(`撤销未恢复原时间线: ${JSON.stringify(undone.project.timeline.clips[0])}`)
+    }
+    console.log('undo ok: speed reverted')
+
+    // BGM:设置 → 调音量 → 导出走混音路径。
+    const bgmPath = path.join(workDir, 'bgm.mp3')
+    await execFileAsync('ffmpeg', [
+      '-y', '-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=5', bgmPath,
+    ])
+    const withBgm = await editor.setBgm(spedUp.project.id, bgmPath, -18)
+    const quieter = await editor.setBgmVolume(spedUp.project.id, -24)
+    if (quieter.project.timeline.bgm?.gainDb !== -24) throw new Error('BGM 音量未生效')
+    const bgmOutput = path.join(workDir, 'output-bgm.mp4')
+    await editor.export(quieter.project.id, bgmOutput)
+    console.log(`bgm export ok (revision ${withBgm.id.slice(0, 8)} → volume -24dB)`)
   } finally {
     await rm(workDir, { recursive: true, force: true })
   }

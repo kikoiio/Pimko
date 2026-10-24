@@ -105,6 +105,31 @@ async function main(): Promise<void> {
       },
     },
     {
+      name: 'undo',
+      description: '撤销最近一次修改,回退到上一版时间线(作为新修订入链,可连续撤销)。',
+      inputSchema: {
+        type: 'object',
+        properties: { projectId: { type: 'string' } },
+        required: ['projectId'],
+        additionalProperties: false,
+      },
+      handler: async (args) => revisionSummary(await editor.undo(String(args.projectId))),
+    },
+    {
+      name: 'set_bgm_volume',
+      description: '调整配乐音量(dB,建议 -24/-18/-12 三档,范围 -40–0)。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          projectId: { type: 'string' },
+          gainDb: { type: 'number' },
+        },
+        required: ['projectId', 'gainDb'],
+        additionalProperties: false,
+      },
+      handler: async (args) => revisionSummary(await editor.setBgmVolume(String(args.projectId), Number(args.gainDb))),
+    },
+    {
       name: 'get_timeline',
       description: '读取项目最新时间线（片段、字幕、静音图），供检查与决策。',
       inputSchema: {

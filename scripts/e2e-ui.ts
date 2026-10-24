@@ -100,6 +100,9 @@ async function main(): Promise<void> {
     if (restored.wordTimestamps === 0) {
       throw new Error(`转写缺少词级时间戳: ${JSON.stringify(restored)}`)
     }
+    await page.locator('.clip-thumb').first().waitFor({ state: 'visible', timeout: 30000 })
+    const thumbs = await page.locator('.clip-thumb').count()
+    if (thumbs < 1) throw new Error('片段缩略图未渲染')
     if (!stageFits) {
       throw new Error(`视频超出预览区: video=${JSON.stringify(videoBox)} stage=${JSON.stringify(stageBox)}`)
     }

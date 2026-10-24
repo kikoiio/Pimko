@@ -361,10 +361,10 @@ button {
 }
 
 .clip {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--accent);
   background: var(--panel-raised);
@@ -373,6 +373,16 @@ button {
   padding: 8px 14px;
   cursor: pointer;
   min-width: 170px;
+}
+
+.clip-thumb {
+  width: 64px;
+  height: 36px;
+  border-radius: 4px;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--line);
+  flex: none;
 }
 
 .clip:hover:not(:disabled) {
@@ -410,6 +420,23 @@ button {
   border-radius: 999px;
   padding: 1px 7px;
   font-variant-numeric: tabular-nums;
+}
+
+/* BGM 音量三档 */
+.bgm-volume {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.button.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.button.small.active {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 @media (prefers-reduced-motion: reduce) {

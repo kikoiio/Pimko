@@ -1,5 +1,8 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron'
+import { execFile } from 'node:child_process'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+import { promisify } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Editor } from '../services/editor'
 import { FfmpegProber } from '../infra/ffmpeg-prober'
@@ -16,6 +19,8 @@ import type { ProjectSummary } from '../shared/api'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
+
+const execFileAsync = promisify(execFile)
 
 let editor: Editor
 let mainWindow: BrowserWindow | undefined
@@ -134,6 +139,43 @@ function registerIpc(): void {
     const file = picked.filePaths[0]
     if (!file) return null
     return editor.setBgm(projectId, file)
+  })
+
+  ipcMain.handle('project:undo', (_event, projectId: string) => editor.undo(projectId))
+
+  ipcMain.handle('project:bgm:volume', (_event, projectId: string, gainDb: number) =>
+    editor.setBgmVolume(projectId, gainDb),
+  )
+
+  // 片段缩略图:取片段中点帧,按 项目+修订+序号 落盘缓存;失败返回 null,UI 留空。
+  ipcMain.handle('clip:thumbnail', async (_event, projectId: string, index: number): Promise<string | null> => {
+    try {
+      const revision = await editor.restore(projectId)
+      const clip = revision?.project.timeline.clips[index]
+      const asset = revision ? revision.project.assets.find((entry) => entry.id === clip?.assetId) : undefined
+      if (!revision || !clip || !asset) return null
+      const cacheDir = path.join(app.getPath('userData'), 'thumbnails')
+      await mkdir(cacheDir, { recursive: true })
+      const cachePath = path.join(cacheDir, `${projectId}-${revision.id}-${index}.jpg`)
+      try {
+        await readFile(cachePath)
+      } catch {
+        const mid = clip.sourceStartSec + (clip.sourceEndSec - clip.sourceStartSec) / 2
+        await execFileAsync('ffmpeg', [
+          '-y', '-v', 'error',
+          '-ss', String(Math.max(0, mid)),
+          '-i', asset.absolutePath,
+          '-frames:v', '1',
+          '-vf', 'scale=160:-2',
+          '-q:v', '5',
+          cachePath,
+        ])
+      }
+      const bytes = await readFile(cachePath)
+      return `data:image/jpeg;base64,${bytes.toString('base64')}`
+    } catch {
+      return null
+    }
   })
 
   ipcMain.handle('project:bgm:remove', (_event, projectId: string) => editor.removeBgm(projectId))

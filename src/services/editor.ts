@@ -90,6 +90,26 @@ export class Editor {
     return revision
   }
 
+  /** 撤销:把上一版时间线作为新修订入链——历史不丢,可连续撤销。 */
+  async undo(projectId: ProjectId): Promise<ProjectRevision> {
+    const current = await this.deps.store.latest(projectId)
+    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    if (!current.parentRevisionId) throw new Error('已经是第一版，没有可撤销的修改。')
+    const parent = await this.deps.store.get(projectId, current.parentRevisionId)
+    if (!parent) throw new Error('找不到上一版记录，无法撤销。')
+    const revision: ProjectRevision = {
+      id: randomUUID(),
+      project: { ...current.project, timeline: structuredClone(parent.project.timeline) },
+      parentRevisionId: current.id,
+      feedback: { text: '撤销上一步' },
+      agentNote: `已撤销「${current.feedback?.text ?? '上一步修改'}」，回到上一版。`,
+      diff: diffTimelines(current.project.timeline.clips, parent.project.timeline.clips),
+      createdAt: new Date().toISOString(),
+    }
+    await this.deps.store.save(revision)
+    return revision
+  }
+
   async restore(projectId: ProjectId): Promise<ProjectRevision | undefined> {
     return this.deps.store.latest(projectId)
   }
@@ -120,6 +140,30 @@ export class Editor {
       parentRevisionId: current.id,
       feedback: { text: `设置配乐: ${bgmPath}` },
       agentNote: '配乐已设置，导出时会与原声混合。',
+      createdAt: new Date().toISOString(),
+    }
+    await this.deps.store.save(revision)
+    return revision
+  }
+
+  /** BGM 音量三档之外也允许连续值;范围收紧在 -40–0dB 防呆。 */
+  async setBgmVolume(projectId: ProjectId, gainDb: number): Promise<ProjectRevision> {
+    const current = await this.deps.store.latest(projectId)
+    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const bgm = current.project.timeline.bgm
+    if (!bgm) throw new Error('还没有添加配乐，请先添加配乐再调音量。')
+    if (!Number.isFinite(gainDb) || gainDb < -40 || gainDb > 0) {
+      throw new Error('配乐音量需在 -40 到 0 dB 之间。')
+    }
+    const revision: ProjectRevision = {
+      id: randomUUID(),
+      project: {
+        ...current.project,
+        timeline: { ...current.project.timeline, bgm: { ...bgm, gainDb } },
+      },
+      parentRevisionId: current.id,
+      feedback: { text: `配乐音量调到 ${gainDb}dB` },
+      agentNote: `配乐音量已调到 ${gainDb}dB，导出时生效。`,
       createdAt: new Date().toISOString(),
     }
     await this.deps.store.save(revision)
