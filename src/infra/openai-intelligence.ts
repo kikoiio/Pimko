@@ -163,8 +163,11 @@ export class OpenAiIntelligence implements EditingIntelligence {
     const isOpenRouter = baseUrl.includes('openrouter.ai')
     if (isOpenRouter) body.require_parameters = true
 
-    // 最多 3 次尝试：偶发非法 JSON / 越界字段时重试，而不是静默降级。
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // 限流与"端点不支持结构化输出"都不是模型答错，单独重试；JSON 解析失败才算一次尝试。
+    let jsonAttempts = 0
+    let rateRetries = 0
+    let relaxed = !isOpenRouter
+    while (jsonAttempts < 3) {
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -175,18 +178,31 @@ export class OpenAiIntelligence implements EditingIntelligence {
       })
       if (!response.ok) {
         const detail = await response.text()
+        // 免费模型常被限流：按 Retry-After 等一会儿再试，别立刻把错误抛给用户。
+        if (response.status === 429 && rateRetries < 2) {
+          rateRetries++
+          const retryAfter = Number(response.headers.get('retry-after'))
+          const waitMs = Math.min(
+            Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 4000 * rateRetries,
+            20000,
+          )
+          await new Promise((resolve) => setTimeout(resolve, waitMs))
+          continue
+        }
         const unsupported =
           isOpenRouter &&
           (response.status === 400 || response.status === 404) &&
           /response_format|structured|require_parameters|No endpoints found/i.test(detail)
-        if (unsupported && 'require_parameters' in body) {
+        if (unsupported && !relaxed) {
           // 该模型的端点不支持强制结构化输出：去掉参数，改用提示词约束 + 本地解析。
+          relaxed = true
           delete body.require_parameters
           delete body.response_format
           continue
         }
         throw new Error(`LLM 请求失败: ${response.status} ${detail}`)
       }
+      jsonAttempts++
       const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
       const content = data.choices?.[0]?.message?.content
       if (!content) continue

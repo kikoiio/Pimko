@@ -38,19 +38,40 @@ async function main(): Promise<void> {
     const consoleLines: string[] = []
     page.on('console', (message) => consoleLines.push(`${message.type()}: ${message.text()}`))
     page.on('pageerror', (error) => consoleLines.push(`pageerror: ${error.message}`))
-    await page.getByRole('button', { name: '选择视频' }).click()
-
     const video = page.locator('video')
-    try {
-      await video.waitFor({ state: 'visible', timeout: 180000 })
-    } catch (error) {
+    const errorBar = page.locator('.error-bar')
+
+    // 免费模型偶发 429：错误条出现时先等一会儿再重试，而不是干等 3 分钟。
+    let retries = 0
+    for (;;) {
+      await page.getByRole('button', { name: '选择视频' }).click()
+      let outcome: 'video' | 'error' | 'timeout' = 'timeout'
+      const deadline = Date.now() + 150000
+      while (Date.now() < deadline) {
+        if (await video.isVisible().catch(() => false)) {
+          outcome = 'video'
+          break
+        }
+        if (await errorBar.isVisible().catch(() => false)) {
+          outcome = 'error'
+          break
+        }
+        await page.waitForTimeout(1000)
+      }
+      if (outcome === 'video') break
       const text = await page.evaluate(() => document.body.innerText).catch(() => '')
+      if (/限流|频繁|稍等/.test(text) && retries < 1) {
+        retries++
+        console.log('免费模型限流，60 秒后重试导入')
+        await page.waitForTimeout(60000)
+        continue
+      }
       await writeFile(
         path.join(tmpDir, 'pimko-e2e-error.txt'),
         `页面文本：\n${text}\n\n控制台：\n${consoleLines.join('\n')}\n`,
       )
       await page.screenshot({ path: path.join(tmpDir, 'pimko-e2e-failure.png') }).catch(() => {})
-      throw error
+      throw new Error(outcome === 'error' ? `导入失败：${text.slice(0, 300)}` : '等待预览视频超时')
     }
     await page.waitForFunction(
       () => {

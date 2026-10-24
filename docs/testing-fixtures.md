@@ -18,8 +18,6 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 口癖检出,中文素材还要求识别出汉字。`samples` 同样支持 `--only`(按样例 id,便于只刷新
 单个来源)。
 
-`check:fixtures` 的 `--only a,b` 可只跑指定素材;`--transcribe` 会检查词级时间戳,中文素材还要求识别出汉字。
-
 ## 合成测试集
 
 全部由 `scripts/make-fixtures.ts` 生成,同一 ffmpeg 版本下结果稳定。
@@ -27,7 +25,7 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 | 素材 | 规格 | 覆盖点 |
 |------|------|--------|
 | `talking-head-en.mp4` | 640×360@30, 15.6s | 口播基线:句中 um/uh 口癖(真实转写可检出) + 1.2/0.9/1.6s 停顿 |
-| `portrait-en.mp4` | 720×1280@30, 14s | 竖屏比例,导出不得变形 |
+| `portrait-en.mp4` | 720×1280@30, 15.6s | 竖屏比例,导出不得变形 |
 | `odd-dims-en.mkv` | 641×361@25, FFV1/yuv444p | 奇数尺寸 → 导出取偶(642×362) |
 | `long-pauses.mp4` | 960×540@30, 13s | 2.5/3/2.5s 长停顿 → 压缩提案 |
 | `silent-track.mp4` | 480×270@30, 8s | 有音轨但全静音 |
