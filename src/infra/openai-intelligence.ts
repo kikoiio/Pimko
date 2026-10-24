@@ -1,4 +1,5 @@
 import type { SilenceInterval } from '../domain/analysis'
+import { CONTEXTUAL_FILLERS, findFillerWords } from '../domain/fillers'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
@@ -26,6 +27,8 @@ const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不
 - startSec/endSec 必须落在对应转写片段时间内，可微调边界但不能跨越相邻片段；
 - speed 可选，范围 0.5–2.0，缺省或 1 为原速；用户嫌某段啰嗦但内容要保留时，优先设 1.2–1.5 倍速而不是删除；
 - 用户要求更紧凑时，优先删除口癖、重复、停顿，其次适度变速；
+- 转写下方会给出机械检测的固定口癖与语境口癖：固定口癖默认删除，语境口癖由你判断是否有语义；
+- 删除口癖的方法是把所在片段拆成两段、绕开该词的起止时间（同一 segmentIndex 可对应多个 clips）；
 - reply 用一句中文说明你做了什么，有变速时说明哪段变速多少。`
 
 export class OpenAiIntelligence implements EditingIntelligence {
@@ -68,6 +71,19 @@ export class OpenAiIntelligence implements EditingIntelligence {
     }
   }
 
+  /** 口癖检测走词级时间戳：固定词机械列出，语境词交给 LLM 判断。 */
+  private fillerBlock(transcript: Transcript): string {
+    const fixed = findFillerWords(transcript)
+    const contextual = findFillerWords(transcript, CONTEXTUAL_FILLERS)
+    if (fixed.length === 0 && contextual.length === 0) return ''
+    const render = (hits: ReturnType<typeof findFillerWords>) =>
+      hits.map((hit) => `段${hit.segmentIndex}「${hit.word}」${hit.startSec.toFixed(2)}-${hit.endSec.toFixed(2)}s`).join('；')
+    const parts: string[] = []
+    if (fixed.length > 0) parts.push(`固定口癖（默认删除）：${render(fixed)}`)
+    if (contextual.length > 0) parts.push(`语境口癖（由你判断是否有语义）：${render(contextual)}`)
+    return `\n${parts.join('\n')}`
+  }
+
   /** 静音图作为第二事实源进 prompt：LLM 拿它微调切点，而不是自己猜停顿。 */
   private silenceBlock(silences?: SilenceInterval[]): string {
     if (!silences || silences.length === 0) return ''
@@ -90,7 +106,7 @@ export class OpenAiIntelligence implements EditingIntelligence {
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `转写片段（index: 起止秒 文本）：\n${segments}\n\n${userMessage}` },
+        { role: 'user', content: `转写片段（index: 起止秒 文本）：\n${segments}${this.fillerBlock(transcript)}\n\n${userMessage}` },
       ],
     }
     // OpenRouter 的结构化输出按端点"尽力而为"；该参数只把请求路由到强制 schema 的端点。

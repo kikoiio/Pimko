@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { Editor } from '../src/services/editor'
+import { findFillerWords } from '../src/domain/fillers'
 import { FfmpegProber } from '../src/infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../src/infra/ffmpeg-renderer'
 import { FfmpegSilenceAnalyzer } from '../src/infra/ffmpeg-silence-analyzer'
@@ -47,6 +48,11 @@ async function main(): Promise<void> {
       throw new Error(`静音分析不符: ${JSON.stringify(silenceGap)}`)
     }
     console.log(`silence ok: ${silenceGap[0]!.startSec.toFixed(2)}-${silenceGap[0]!.endSec.toFixed(2)}s`)
+    const fillers = draft.project.transcript ? findFillerWords(draft.project.transcript) : []
+    if (fillers.length < draft.project.timeline.clips.length) {
+      throw new Error(`口癖检测不符: ${JSON.stringify(fillers)}`)
+    }
+    console.log(`fillers ok: ${fillers.length} hits`)
     const asset = draft.project.assets[0]!
     if (draft.project.settings.width !== asset.width || draft.project.settings.height !== asset.height) {
       throw new Error(`导出尺寸应跟随源视频: got ${draft.project.settings.width}x${draft.project.settings.height}, source ${asset.width}x${asset.height}`)

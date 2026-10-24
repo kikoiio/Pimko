@@ -11,10 +11,10 @@ export class MockTranscriber implements Transcriber {
       segments.push({
         startSec: start,
         endSec: Math.min(start + segmentLength, asset.durationSec),
-        text: `第 ${index} 句：这是 mock 转写内容，接入真实语音识别后会替换。`,
+        text: `第 ${index} 句： 呃 这是 mock 转写内容，接入真实语音识别后会替换。`,
         confidence: 0.9,
         words: mockWords(
-          `第 ${index} 句：这是 mock 转写内容，接入真实语音识别后会替换。`,
+          `第 ${index} 句： 呃 这是 mock 转写内容，接入真实语音识别后会替换。`,
           start,
           Math.min(start + segmentLength, asset.durationSec),
         ),
