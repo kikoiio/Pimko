@@ -17,7 +17,7 @@ linux:
 win:
   target:
     - nsis
-  artifactName: ${ProductName}-${version}-setup.${ext}
+  artifactName: ${productName}-${version}-setup.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
