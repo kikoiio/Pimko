@@ -1,6 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Editor } from '../services/editor'
 import { FfmpegProber } from '../infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../infra/ffmpeg-renderer'
@@ -15,6 +15,17 @@ const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
 
 let editor: Editor
+
+function mediaUrl(fileUrl: string): string {
+  return `pimko-media://${encodeURIComponent(fileURLToPath(fileUrl))}`
+}
+
+function registerMediaProtocol(): void {
+  protocol.handle('pimko-media', (request) => {
+    const filePath = decodeURIComponent(new URL(request.url).host)
+    return net.fetch(pathToFileURL(filePath).href)
+  })
+}
 
 function createEditor(): Editor {
   let config: LlmConfig
@@ -39,6 +50,10 @@ function createEditor(): Editor {
 
 function registerIpc(): void {
   ipcMain.handle('project:import', async () => {
+    if (process.env.PIMKO_SELF_TEST_VIDEO) {
+      const revision = await editor.createDraft(process.env.PIMKO_SELF_TEST_VIDEO)
+      return { revision, sourceUrl: mediaUrl(pathToFileURL(process.env.PIMKO_SELF_TEST_VIDEO).href) }
+    }
     const picked = await dialog.showOpenDialog({
       title: '选择口播视频',
       properties: ['openFile'],
@@ -47,7 +62,7 @@ function registerIpc(): void {
     const file = picked.filePaths[0]
     if (!file) return null
     const revision = await editor.createDraft(file)
-    return { revision, sourceUrl: pathToFileURL(file).href }
+    return { revision, sourceUrl: mediaUrl(pathToFileURL(file).href) }
   })
 
   ipcMain.handle('project:revise', async (_event, projectId: string, feedback: string) => {
@@ -62,7 +77,7 @@ function registerIpc(): void {
     })
     if (picked.canceled || !picked.filePath) return null
     const outputPath = await editor.export(projectId, picked.filePath)
-    return { outputPath, outputUrl: pathToFileURL(outputPath).href }
+    return { outputPath, outputUrl: mediaUrl(pathToFileURL(outputPath).href) }
   })
 
   ipcMain.handle('project:bgm:set', async (_event, projectId: string) => {
@@ -99,6 +114,7 @@ function createWindow(): void {
 
 void app.whenReady().then(() => {
   void loadDotEnv().then(() => {
+  registerMediaProtocol()
   editor = createEditor()
   registerIpc()
   createWindow()
