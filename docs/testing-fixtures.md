@@ -6,6 +6,9 @@
 |------|------|----------|------|
 | `sample-assets/fixtures/` | 脚本合成(ffmpeg + flite) | 否 | 确定性回归:尺寸/比例/音轨/停顿/边界 |
 | `sample-assets/public/` | 公开授权素材下载 | 是 | 真实语料:中文/英文口播转写 |
+| `sample-assets/boundaries/` | 边界素材生成器 | 否 | 23 个默认文件 + 2 个扩展负载文件，按清单区分自动验证与人工探测 |
+
+人工体验的步骤、通过条件和结果记录见 [当前能力验收用例](testing-acceptance.md)。
 
 ```bash
 npm run fixtures        # 生成合成测试集(含 manifest.json 期望值)
@@ -33,6 +36,30 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 | `short-0.8s.mp4` | 320×180@30, 0.5s | 极短素材边界 |
 
 语音由 ffmpeg 的 `flite` 滤镜合成(需要带 libflite 的系统 ffmpeg;静态 ffmpeg-static 不带)。找不到时自动回退为音调占位,结构与时长不变,但词级内容测试会失效。
+
+## 边界素材集
+
+`scripts/boundary-cases.ts` 是边界条目的唯一清单，记录文件名、用途、尺寸/时长/音轨期望和人工观察点。
+生成脚本为 `scripts/make-boundaries.ts`，验证脚本为 `scripts/check-boundaries.ts`。
+
+- 默认 23 个文件：1:1、MOV/M4V/MKV/WebM、中文/空格/单引号路径、旋转矩阵、非方形像素、VFR、单帧、1fps、短音轨、延迟音轨、单侧声道、弱语音、带噪语音、音乐遮盖、全静音、无音轨、零字节、伪视频、截断文件、纯音频 MP4。
+- `--extended` 额外生成短 4K 与 5 分钟视频，共 25 个；不默认在本机生成和跑渲染。
+- 全部是自生成测试内容，不需要下载、模型请求或 API Key。语音需要带 libflite 的 ffmpeg，缺少时直接失败，不以音调冒充口播。
+- 自动检查素材 SHA256、真实尺寸/时长/音轨，并检查旋转/SAR/VFR/音轨偏移是否真实存在；`--render` 对标记为可渲染的 8 个条目执行实际导出自检。其余条目仅验证素材属性或拒绝行为，不等于产品已支持。
+- `check-results.json` 区分自动检查结果与仍需人工验收的产品行为。弱音/噪声/音乐和静音幻听必须使用真实转写，mock 无法证明效果。
+
+```bash
+npm run fixtures:boundaries                 # 默认 23 个
+npm run fixtures:boundaries -- --extended   # 加入 4K/5 分钟
+npm run check:boundaries                    # 属性/哈希/拒绝行为
+npm run check:boundaries -- --render        # 加实际渲染
+```
+
+上述视频生成与渲染属于重型操作，优先使用 `.github/workflows/boundaries.yml` 的 GitHub Actions。
+它只用合成数据、无模型凭证，按单 worker 生成并提供 7 天有效的 `pimko-boundary-corpus` 测试附件；不创建 Release。
+附件中的故意损坏文件只应交给视频导入或探测器，不执行。4K 与长视频需手动开启扩展项。
+
+生成器尚未运行时不能把素材清单说成“文件已准备好”；以本次 CI 附件及 `check-results.json` 为准。
 
 ## 公开素材
 
