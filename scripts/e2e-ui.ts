@@ -3,6 +3,13 @@ import { execFile } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
+import type { PimkoApi } from '../src/shared/api'
+
+declare global {
+  interface Window {
+    pimko: PimkoApi
+  }
+}
 
 const execFileAsync = promisify(execFile)
 const root = path.resolve(__dirname, '..')
@@ -143,6 +150,60 @@ async function main(): Promise<void> {
     }
     if (Math.abs(renderedRatio - intrinsicRatio) > 0.05) {
       throw new Error(`视频渲染比例失真: rendered=${renderedRatio.toFixed(3)} intrinsic=${intrinsicRatio.toFixed(3)}`)
+    }
+    // mock 作业覆盖实际 UI 的连续修改、撤销和导出；真实模型作业保留独立的联网验收。
+    if ((process.env.PIMKO_LLM_PROVIDER ?? 'mock') === 'mock') {
+      const original = await page.evaluate(async (id) =>
+        (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
+      await page.getByRole('button', { name: '查看实际效果' }).click()
+      await page.getByRole('tab', { name: '效果预览', exact: true }).waitFor({ timeout: 120000 })
+      await page.waitForFunction(() => {
+        const video = document.querySelector('video')
+        return video !== null && video.readyState >= 2 && video.videoWidth > 0 && video.playbackRate === 1
+      })
+      if (await page.locator('.subtitle-overlay').count() !== 0) throw new Error('效果预览重复叠加字幕')
+      const cachedPreviewUrl = await page.locator('video').getAttribute('src')
+      await page.getByRole('button', { name: '查看实际效果' }).click()
+      await page.getByRole('button', { name: '查看实际效果' }).waitFor()
+      if (await page.locator('video').getAttribute('src') !== cachedPreviewUrl) throw new Error('同版本预览未命中缓存')
+      for (const speed of [2, 1]) {
+        const bubbleCount = await page.locator('.bubble.agent').count()
+        await page.getByRole('textbox', { name: '剪辑反馈' }).fill(`第一段 ${speed} 倍速`)
+        await page.getByRole('button', { name: '发送', exact: true }).click()
+        await page.waitForFunction((count) => document.querySelectorAll('.bubble.agent').length > count, bubbleCount)
+        const updated = await page.evaluate(async (id) =>
+          (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
+        if ((updated.clips[0]?.speed ?? 1) !== speed) throw new Error(`界面变速未生效：${speed}`)
+        if (await page.getByRole('tab', { name: '效果预览', exact: true }).count() !== 0) throw new Error('修改后仍显示旧效果预览')
+      }
+      for (let i = 0; i < 2; i++) {
+        const bubbleCount = await page.locator('.bubble.agent').count()
+        await page.getByRole('button', { name: '撤销上一步' }).click()
+        await page.waitForFunction((count) => document.querySelectorAll('.bubble.agent').length > count, bubbleCount)
+      }
+      const undone = await page.evaluate(async (id) =>
+        (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
+      if (JSON.stringify(undone) !== JSON.stringify(original)) throw new Error('连续撤销没有恢复初稿')
+      const beforeSubtitleEdit = await page.locator('.bubble.agent').count()
+      await page.getByRole('textbox', { name: '剪辑反馈' }).fill('字幕调大并移到顶部')
+      await page.getByRole('button', { name: '发送', exact: true }).click()
+      await page.waitForFunction((count) => document.querySelectorAll('.bubble.agent').length > count, beforeSubtitleEdit)
+      const styled = await page.evaluate(async (id) =>
+        (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
+      if (styled.subtitleAppearance?.size !== 'large' || styled.subtitleAppearance.position !== 'top') {
+        throw new Error('对话字幕外观未生效')
+      }
+      const exportPath = path.join(tmpDir, 'e2e-output.mp4')
+      await app.evaluate(({ dialog }, outputPath) => {
+        dialog.showSaveDialog = async () => ({ canceled: false, filePath: outputPath })
+      }, exportPath)
+      await page.getByRole('button', { name: '生成成片', exact: true }).click()
+      await page.getByRole('tab', { name: '成片预览' }).waitFor({ timeout: 120000 })
+      await page.waitForFunction(() => {
+        const video = document.querySelector('video')
+        return video !== null && video.readyState >= 2 && video.videoWidth > 0 && video.playbackRate === 1
+      })
+      console.log('UI lifecycle passed: two revisions → two undos → export → playable output')
     }
   } finally {
     for (const page of app.windows()) {

@@ -1,5 +1,5 @@
 import type { MediaAsset } from '../domain/media'
-import type { Feedback, Project, ProjectId, ProjectRevision, RevisionDiff } from '../domain/project'
+import type { Feedback, Project, ProjectId, ProjectRevision, RevisionDiff, RevisionId } from '../domain/project'
 import type { TimelineClip } from '../domain/timeline'
 import { randomUUID } from 'node:crypto'
 import type { SilenceAnalyzer } from '../ports/analyzer'
@@ -80,31 +80,69 @@ export class Editor {
       id: randomUUID(),
       project: { ...current.project, timeline: plan.timeline },
       parentRevisionId: current.id,
+      operation: { kind: 'edit' },
       feedback,
       agentNote: plan.note,
       diff: diffTimelines(current.project.timeline.clips, plan.timeline.clips),
-      createdAt: new Date().toISOString(),
+      createdAt: nextRevisionTime(current),
     }
     await this.deps.store.save(revision)
     return revision
   }
 
-  /** 撤销:把上一版时间线作为新修订入链——历史不丢,可连续撤销。 */
+  /** 撤销追加一条修订；从当前逻辑版本继续向前，而不是撤销上一条撤销记录。 */
   async undo(projectId: ProjectId): Promise<ProjectRevision> {
     const current = await this.currentRevision(projectId)
-    if (!current.parentRevisionId) throw new Error('已经是第一版，没有可撤销的修改。')
-    const parent = await this.deps.store.get(projectId, current.parentRevisionId)
-    if (!parent) throw new Error('找不到上一版记录，无法撤销。')
+    const source = await this.resolveUndoSource(current)
+    if (!source.parentRevisionId) throw new Error('已经是第一版，没有可撤销的修改。')
+    const parent = await this.getHistoryRevision(projectId, source.parentRevisionId)
+    const target = await this.resolveUndoSource(parent)
     const revision: ProjectRevision = {
       id: randomUUID(),
-      project: { ...current.project, timeline: structuredClone(parent.project.timeline) },
+      project: { ...current.project, timeline: structuredClone(target.project.timeline) },
       parentRevisionId: current.id,
+      operation: { kind: 'undo', restoredRevisionId: target.id },
       feedback: { text: '撤销上一步' },
-      agentNote: `已撤销「${current.feedback?.text ?? '上一步修改'}」，回到上一版。`,
-      diff: diffTimelines(current.project.timeline.clips, parent.project.timeline.clips),
-      createdAt: new Date().toISOString(),
+      agentNote: `已撤销「${source.feedback?.text ?? '上一步修改'}」，回到上一版。`,
+      diff: diffTimelines(current.project.timeline.clips, target.project.timeline.clips),
+      createdAt: nextRevisionTime(current),
     }
     await this.deps.store.save(revision)
+    return revision
+  }
+
+  /** 将撤销和设置迁移记录解析为其代表的可编辑版本，兼容未带元数据的旧记录。 */
+  private async resolveUndoSource(revision: ProjectRevision): Promise<ProjectRevision> {
+    const visited = new Set<string>()
+    let source = revision
+    while (true) {
+      if (visited.has(source.id)) throw new Error('修订历史存在循环，无法撤销。')
+      visited.add(source.id)
+      const operation = source.operation
+      if (operation?.kind === 'undo') {
+        source = await this.getHistoryRevision(source.project.id, operation.restoredRevisionId)
+        continue
+      }
+      if (operation?.kind === 'settings-migration' || (!operation && isLegacySettingsMigration(source))) {
+        if (!source.parentRevisionId) throw new Error('找不到上一版记录，无法撤销。')
+        source = await this.getHistoryRevision(source.project.id, source.parentRevisionId)
+        continue
+      }
+      if (!operation && isLegacyUndo(source)) {
+        if (!source.parentRevisionId) throw new Error('找不到上一版记录，无法撤销。')
+        // 旧版撤销恢复的是直接前驱的父版本，包括当时可能产生的来回切换。
+        const previous = await this.getHistoryRevision(source.project.id, source.parentRevisionId)
+        if (!previous.parentRevisionId) throw new Error('找不到上一版记录，无法撤销。')
+        source = await this.getHistoryRevision(source.project.id, previous.parentRevisionId)
+        continue
+      }
+      return source
+    }
+  }
+
+  private async getHistoryRevision(projectId: ProjectId, revisionId: RevisionId): Promise<ProjectRevision> {
+    const revision = await this.deps.store.get(projectId, revisionId)
+    if (!revision) throw new Error('找不到上一版记录，无法撤销。')
     return revision
   }
 
@@ -131,9 +169,10 @@ export class Editor {
       id: randomUUID(),
       project: { ...revision.project, settings: { ...settings, width, height } },
       parentRevisionId: revision.id,
+      operation: { kind: 'settings-migration' },
       feedback: { text: '自动修正导出尺寸' },
       agentNote: `导出尺寸已按素材修正为 ${width}×${height}（原为 ${settings.width}×${settings.height}）。`,
-      createdAt: new Date().toISOString(),
+      createdAt: nextRevisionTime(revision),
     }
     await this.deps.store.save(repaired)
     return repaired
@@ -168,9 +207,10 @@ export class Editor {
         timeline: { ...current.project.timeline, bgm: { path: bgmPath, gainDb } },
       },
       parentRevisionId: current.id,
+      operation: { kind: 'edit' },
       feedback: { text: `设置配乐: ${bgmPath}` },
       agentNote: '配乐已设置，导出时会与原声混合。',
-      createdAt: new Date().toISOString(),
+      createdAt: nextRevisionTime(current),
     }
     await this.deps.store.save(revision)
     return revision
@@ -191,9 +231,10 @@ export class Editor {
         timeline: { ...current.project.timeline, bgm: { ...bgm, gainDb } },
       },
       parentRevisionId: current.id,
+      operation: { kind: 'edit' },
       feedback: { text: `配乐音量调到 ${gainDb}dB` },
       agentNote: `配乐音量已调到 ${gainDb}dB，导出时生效。`,
-      createdAt: new Date().toISOString(),
+      createdAt: nextRevisionTime(current),
     }
     await this.deps.store.save(revision)
     return revision
@@ -206,9 +247,10 @@ export class Editor {
       id: randomUUID(),
       project: { ...current.project, timeline },
       parentRevisionId: current.id,
+      operation: { kind: 'edit' },
       feedback: { text: '移除配乐' },
       agentNote: '配乐已移除。',
-      createdAt: new Date().toISOString(),
+      createdAt: nextRevisionTime(current),
     }
     await this.deps.store.save(revision)
     return revision
@@ -216,6 +258,23 @@ export class Editor {
 }
 
 export type { ExportProgress } from '../ports/renderer'
+
+function isLegacyUndo(revision: ProjectRevision): boolean {
+  return revision.feedback?.text === '撤销上一步'
+    && revision.agentNote?.startsWith('已撤销「') === true
+    && revision.agentNote.endsWith('，回到上一版。')
+}
+
+function isLegacySettingsMigration(revision: ProjectRevision): boolean {
+  return revision.feedback?.text === '自动修正导出尺寸'
+    && revision.agentNote?.startsWith('导出尺寸已按素材修正为 ') === true
+}
+
+/** 存储按时间选最新版；快速连续操作和系统时钟回拨也必须排在父版本之后。 */
+function nextRevisionTime(parent: ProjectRevision): string {
+  const parentTime = Date.parse(parent.createdAt)
+  return new Date(Math.max(Date.now(), Number.isFinite(parentTime) ? parentTime + 1 : 0)).toISOString()
+}
 
 function evenDimension(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectRevision } from '../../domain/project'
 import { findFillerWords } from '../../domain/fillers'
+import { subtitleAtTime } from '../../domain/subtitles'
 import { timelineDurationSec, transitionDuration } from '../../domain/timeline'
-import type { ExportProgress, ExportResult, ImportResult, PimkoApi, ProjectSummary } from '../../shared/api'
+import type { ExportProgress, ExportResult, ImportResult, PimkoApi, PreviewResult, ProjectSummary } from '../../shared/api'
 
 declare global {
   interface Window {
@@ -16,8 +17,8 @@ interface ChatMessage {
   text: string
 }
 
-type Stage = 'idle' | 'drafting' | 'ready' | 'exporting'
-type PreviewMode = 'draft' | 'output'
+type Stage = 'idle' | 'drafting' | 'ready' | 'revising' | 'previewing' | 'exporting'
+type PreviewMode = 'draft' | 'rendered' | 'output'
 
 const BGM_PRESETS = [
   { label: '轻', gainDb: -24 },
@@ -71,6 +72,7 @@ export function App() {
   const [revision, setRevision] = useState<ProjectRevision | null>(null)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [output, setOutput] = useState<ExportResult | null>(null)
+  const [renderedPreview, setRenderedPreview] = useState<PreviewResult | null>(null)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('draft')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [feedback, setFeedback] = useState('')
@@ -92,6 +94,16 @@ export function App() {
     [revision],
   )
   const silences = revision?.project.silences ?? []
+  const subtitleAppearance = revision?.project.timeline.subtitleAppearance
+  const subtitleScale = subtitleAppearance?.size === 'small' ? 0.7 : subtitleAppearance?.size === 'large' ? 1.4 : 1
+
+  useEffect(() => {
+    setRenderedPreview(null)
+    if (videoRef.current) {
+      videoRef.current.pause()
+      videoRef.current.playbackRate = 1
+    }
+  }, [revision?.id])
 
   // 修订变化后重新取片段缩略图(带主进程磁盘缓存);上限 30 张防长片刷爆。
   useEffect(() => {
@@ -170,7 +182,9 @@ export function App() {
   }
 
   async function handleRevise(): Promise<void> {
-    if (!revision || !feedback.trim()) return
+    if (!revision || !feedback.trim() || stage !== 'ready') return
+    setStage('revising')
+    setError(null)
     const text = feedback.trim()
     setFeedback('')
     setMessages((prev) => [...prev, { id: nextMessageId(), role: 'user', text }])
@@ -199,6 +213,8 @@ export function App() {
       pushAgent(note)
     } catch (err) {
       setError(friendlyError(err))
+    } finally {
+      setStage('ready')
     }
   }
 
@@ -210,6 +226,8 @@ export function App() {
       setRevision(next)
       setOutput(null)
       setPreviewMode('draft')
+      activeClipRef.current = 0
+      setLiveSubtitle('')
       pushAgent(next.agentNote ?? '已撤销上一步。')
     } catch (err) {
       setError(friendlyError(err))
@@ -222,6 +240,8 @@ export function App() {
     try {
       const next = await window.pimko.setBgmVolume(revision.project.id, gainDb)
       setRevision(next)
+      setOutput(null)
+      setPreviewMode('draft')
       pushAgent(next.agentNote ?? '配乐音量已调整。')
     } catch (err) {
       setError(friendlyError(err))
@@ -259,6 +279,26 @@ export function App() {
     }
   }
 
+  async function handlePreview(): Promise<void> {
+    if (!revision || stage !== 'ready') return
+    setError(null)
+    setStage('previewing')
+    setExportProgress(null)
+    videoRef.current?.pause()
+    try {
+      const preview = await window.pimko.renderPreview(revision.project.id, revision.id)
+      if (preview.revisionId !== revision.id) throw new Error('预览版本不一致，请重新生成。')
+      setRenderedPreview(preview)
+      setPreviewMode('rendered')
+      setLiveSubtitle('')
+    } catch (err) {
+      setError(friendlyError(err))
+    } finally {
+      setStage('ready')
+      setExportProgress(null)
+    }
+  }
+
   async function handleExport(): Promise<void> {
     if (!revision) return
     setError(null)
@@ -289,7 +329,9 @@ export function App() {
   }
 
   function entryForSourceTime(time: number): TimelineEntry | undefined {
-    return timelineEntries.find((entry) => {
+    const active = timelineEntries[activeClipRef.current]
+    const candidates = active ? [active, ...timelineEntries] : timelineEntries
+    return candidates.find((entry) => {
       const clip = clips[entry.clipIndex]!
       return time >= clip.sourceStartSec && time < clip.sourceEndSec
     })
@@ -319,10 +361,7 @@ export function App() {
       setLiveSubtitle('')
       return
     }
-    const cue = revision.project.timeline.subtitles.find(
-      (c) => Math.max(c.startSec, activeClip.sourceStartSec) < Math.min(c.endSec, activeClip.sourceEndSec),
-    )
-    setLiveSubtitle(cue?.text ?? '')
+    setLiveSubtitle(subtitleAtTime(revision.project.timeline.subtitles, time))
     if (seekingRef.current) return
     const clip = clips[activeClipRef.current]
     if (!clip) return
@@ -336,7 +375,9 @@ export function App() {
     }
   }
 
-  const previewSrc = previewMode === 'output' && output ? output.outputUrl : sourceUrl
+  const currentPreview = renderedPreview?.revisionId === revision?.id ? renderedPreview : null
+  const previewSrc = previewMode === 'output' && output ? output.outputUrl
+    : previewMode === 'rendered' && currentPreview ? currentPreview.previewUrl : sourceUrl
 
   return (
     <div className="app">
@@ -377,6 +418,11 @@ export function App() {
             )
           )}
           {revision && (
+            <button className="button" onClick={() => void handlePreview()} disabled={stage !== 'ready'}>
+              {stage === 'previewing' ? '正在生成预览…' : '查看实际效果'}
+            </button>
+          )}
+          {revision && (
             <button
               className="button primary"
               onClick={() => void handleExport()}
@@ -400,7 +446,7 @@ export function App() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
-      {stage === 'exporting' && exportProgress && (
+      {(stage === 'exporting' || stage === 'previewing') && exportProgress && (
         <div className="export-progress">
           {exportProgress.phase === 'cutting'
             ? `正在裁切片段 ${exportProgress.current}/${exportProgress.total}…`
@@ -412,6 +458,7 @@ export function App() {
         </div>
       )}
 
+      {stage === 'revising' && <div className="export-progress">正在按你的反馈修改…</div>}
       {stage === 'idle' && !revision ? (
         <main className="empty">
           <div className="empty-copy">
@@ -446,18 +493,28 @@ export function App() {
                 src={previewSrc}
                 controls
                 playsInline
+                onLoadedMetadata={() => {
+                  seekingRef.current = false
+                  if (videoRef.current) videoRef.current.playbackRate = 1
+                }}
                 onTimeUpdate={handleTimeUpdate}
                 onSeeking={() => { seekingRef.current = true }}
                 onSeeked={handleSeeked}
               />
-                {previewMode === 'draft' && liveSubtitle && (
-                  <div className="subtitle-overlay">{liveSubtitle}</div>
+                {previewMode === 'draft' && liveSubtitle && subtitleAppearance?.visible !== false && (
+                  <div className="subtitle-overlay" style={{
+                    fontSize: `${22 * subtitleScale}px`,
+                    fontWeight: subtitleAppearance?.style === 'minimal' ? 400 : 700,
+                    top: subtitleAppearance?.position === 'top' ? '8%' : subtitleAppearance?.position === 'center' ? '50%' : undefined,
+                    bottom: subtitleAppearance?.position === 'top' || subtitleAppearance?.position === 'center' ? 'auto' : undefined,
+                    transform: subtitleAppearance?.position === 'center' ? 'translateY(-50%)' : undefined,
+                  }}>{liveSubtitle}</div>
                 )}
               </div>
             ) : (
               <div className="stage-placeholder">正在准备预览…</div>
             )}
-            {output && (
+            {(output || currentPreview) && (
               <div className="preview-tabs" role="tablist">
                 <button
                   role="tab"
@@ -467,14 +524,21 @@ export function App() {
                 >
                   草稿预览
                 </button>
-                <button
+                {currentPreview && (
+                  <button role="tab" aria-selected={previewMode === 'rendered'}
+                    className={previewMode === 'rendered' ? 'active' : ''}
+                    onClick={() => setPreviewMode('rendered')}>
+                    效果预览
+                  </button>
+                )}
+                {output && <button
                   role="tab"
                   aria-selected={previewMode === 'output'}
                   className={previewMode === 'output' ? 'active' : ''}
                   onClick={() => setPreviewMode('output')}
                 >
                   成片预览
-                </button>
+                </button>}
               </div>
             )}
           </section>

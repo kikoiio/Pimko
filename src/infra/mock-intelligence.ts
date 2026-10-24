@@ -1,6 +1,7 @@
 import type { SilenceInterval } from '../domain/analysis'
 import { applyPauseCompressions, planPauseCompressions } from '../domain/pause-compress'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
+import { subtitlesForClips } from '../domain/subtitles'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
 import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
@@ -36,17 +37,28 @@ export class MockIntelligence implements EditingIntelligence {
 
   async reviseTimeline(project: Project, feedback: Feedback): Promise<EditPlan> {
     const timeline = project.timeline
+    if (feedback.text.includes('字幕')) {
+      const appearance = { ...timeline.subtitleAppearance }
+      if (/大/.test(feedback.text)) appearance.size = 'large'
+      if (/小/.test(feedback.text)) appearance.size = 'small'
+      if (/标准|中等/.test(feedback.text)) appearance.size = 'medium'
+      if (/顶部|上方|移上/.test(feedback.text)) appearance.position = 'top'
+      if (/底部|下方|移下/.test(feedback.text)) appearance.position = 'bottom'
+      if (/居中|中间/.test(feedback.text)) appearance.position = 'center'
+      if (/简洁/.test(feedback.text)) appearance.style = 'minimal'
+      if (/加粗/.test(feedback.text)) appearance.style = 'bold'
+      if (/隐藏|关闭|不要/.test(feedback.text)) appearance.visible = false
+      if (/显示|开启/.test(feedback.text)) appearance.visible = true
+      return { timeline: { ...timeline, subtitleAppearance: appearance }, note: '已调整字幕外观（mock 演示逻辑）。' }
+    }
     if (feedback.text.includes('开头太拖')) {
       const clips = timeline.clips.slice()
       if (clips.length > 0) {
         const first = clips[0]!
         const trim = Math.min(1.5, (first.sourceEndSec - first.sourceStartSec) * 0.5)
         clips[0] = { ...first, sourceStartSec: first.sourceStartSec + trim }
-        const firstCue = timeline.subtitles.find(
-          (cue) => cue.startSec < first.sourceEndSec && cue.endSec > first.sourceStartSec + trim,
-        )
         return {
-          timeline: { ...timeline, clips, subtitles: remapSubtitles(clips, timeline.subtitles, firstCue?.text) },
+          timeline: { ...timeline, clips, subtitles: project.transcript ? subtitlesForClips(project.transcript, clips) : timeline.subtitles },
           note: '已剪短开头（mock 演示逻辑）。',
         }
       }
@@ -57,7 +69,7 @@ export class MockIntelligence implements EditingIntelligence {
       const speed = Math.min(2, Math.max(0.5, Number(speedMatch[1])))
       const first = timeline.clips[0]!
       const clips = timeline.clips.slice()
-      clips[0] = { ...first, ...(speed !== 1 ? { speed } : {}) }
+      clips[0] = { ...first, speed }
       return {
         timeline: { ...timeline, clips },
         note: `已把第 1 段设为 ${speed} 倍速（mock 演示逻辑）。`,
@@ -78,19 +90,4 @@ export class MockIntelligence implements EditingIntelligence {
       note: 'mock 模式只演示「开头太拖」「N 倍速」「转场」这几种反馈，其他反馈暂不改动时间线。',
     }
   }
-}
-
-function remapSubtitles(clips: Timeline['clips'], cues: Timeline['subtitles'], removedText?: string) {
-  // 重建输出时间轴：clip 顺序连续，字幕跟随 clip 平移。
-  let outputStart = 0
-  const subtitleByStart = new Map(cues.map((cue) => [cue.startSec, cue]))
-  return clips.flatMap((clip) => {
-    const length = clip.sourceEndSec - clip.sourceStartSec
-    const cue = subtitleByStart.get(clip.sourceStartSec)
-    const entry = cue
-      ? { startSec: outputStart, endSec: outputStart + length, text: cue.text }
-      : undefined
-    outputStart += length
-    return entry ? [entry] : []
-  }).filter((cue) => cue.text !== removedText)
 }

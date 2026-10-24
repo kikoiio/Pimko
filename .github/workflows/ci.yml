@@ -21,6 +21,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: npm ci
       - run: npm run typecheck
+      - name: Editing behavior regressions (no API)
+        run: npm run check:editing
       - run: npm run build
       - name: Generate fixtures
         run: npm run fixtures
@@ -49,6 +51,8 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: ''
       - run: npm run typecheck
+      - name: Editing behavior regressions (no API)
+        run: npm run check:editing
       - run: npm run build
       - name: UI E2E (mock pipeline)
         run: xvfb-run -a npm run test:ui
@@ -76,6 +80,8 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: ''
       - run: npm run typecheck
+      - name: Editing behavior regressions (no API)
+        run: npm run check:editing
       - run: npm run build
       - name: Generate voice sample
         run: |

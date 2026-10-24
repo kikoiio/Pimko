@@ -5,6 +5,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Editor } from '../services/editor'
+import { PreviewService } from '../services/preview'
 import { FfmpegProber } from '../infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../infra/ffmpeg-renderer'
 import { FfmpegSilenceAnalyzer } from '../infra/ffmpeg-silence-analyzer'
@@ -70,6 +71,15 @@ function createEditor(): Editor {
 }
 
 function registerIpc(): void {
+  const previews = new PreviewService(new FfmpegRenderer(), path.join(app.getPath('userData'), 'previews'))
+  ipcMain.handle('project:preview', async (_event, projectId: string, revisionId: string) => {
+    const revision = await editor.restore(projectId)
+    if (!revision || revision.id !== revisionId) throw new Error('项目版本已改变，请重新生成效果预览。')
+    const result = await previews.render(revision, (progress) => {
+      mainWindow?.webContents.send('export:progress', progress)
+    })
+    return { revisionId: result.revisionId, previewUrl: mediaUrl(pathToFileURL(result.outputPath).href) }
+  })
   ipcMain.handle('project:import', async () => {
     if (process.env.PIMKO_SELF_TEST_VIDEO) {
       const revision = await editor.createDraft(process.env.PIMKO_SELF_TEST_VIDEO)
