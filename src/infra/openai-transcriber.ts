@@ -1,15 +1,11 @@
-import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import type { MediaAsset } from '../domain/media'
 import type { Transcript } from '../domain/transcript'
 import type { Transcriber } from '../ports/transcriber'
+import { extractAudio } from './extract-audio'
 import type { LlmConfig } from './llm-config'
-import { resolveFfmpeg } from './ffmpeg-bin'
-
-const execFileAsync = promisify(execFile)
 
 function defaultTranscribeModel(baseUrl: string): string {
   // Groq 没有 whisper-1；OpenAI 没有 whisper-large-v3。按网关选默认模型。
@@ -22,19 +18,7 @@ export class OpenAiTranscriber implements Transcriber {
   async transcribe(asset: MediaAsset): Promise<Transcript> {
     const workDir = await mkdtemp(path.join(tmpdir(), 'pimko-transcribe-'))
     try {
-      const audioPath = path.join(workDir, 'audio.mp3')
-      try {
-        await execFileAsync(resolveFfmpeg(), [
-          '-y', '-v', 'error', '-i', asset.absolutePath, '-vn', '-ac', '1', '-ar', '16000', audioPath,
-        ])
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (message.includes('does not contain any stream')) {
-          throw new Error('这段视频没有音轨，无法转写。请导入有说话声的口播视频，或切回 mock 模式测试界面。')
-        }
-        throw err
-      }
-      const audio = await readFile(audioPath)
+      const audio = await readFile(await extractAudio(asset, workDir))
       const baseUrl = this.config.transcribeBaseUrl ?? this.config.baseUrl ?? 'https://api.openai.com/v1'
       const form = new FormData()
       form.append('file', new Blob([audio], { type: 'audio/mpeg' }), 'audio.mp3')

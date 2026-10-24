@@ -15,7 +15,10 @@
     "start": "electron-vite preview",
     "collect:ffmpeg": "tsx scripts/collect-ffmpeg.ts",
     "dist:linux": "npm run collect:ffmpeg && electron-vite build && electron-builder --linux --publish never",
-    "dist:win": "npm run collect:ffmpeg && electron-vite build && electron-builder --win --publish never"
+    "dist:win": "npm run collect:ffmpeg && electron-vite build && electron-builder --win --publish never",
+    "fixtures": "tsx scripts/make-fixtures.ts",
+    "samples": "tsx scripts/fetch-samples.ts",
+    "check:fixtures": "tsx scripts/check-fixtures.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

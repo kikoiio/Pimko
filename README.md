@@ -12,6 +12,9 @@ npm run dev       # Electron 开发模式
 npm run typecheck
 npm run build
 npm run smoke     # 端到端冒烟：草稿 → 修订 → 变速 → 导出
+npm run fixtures  # 生成合成测试素材(尺寸/比例/停顿/无音轨等)
+npm run samples   # 下载公开授权素材(中文/英文口播,需网络)
+npm run check:fixtures   # 用测试素材跑管线并断言
 npm run smoke:mcp # MCP 冒烟：外部客户端经 stdio 驱动引擎闭环
 npm run mcp       # 启动 MCP 服务器（供 Claude Code 等 agent 接入）
 ```
@@ -37,7 +40,7 @@ ffmpeg -f lavfi -i "flite=text=Hello and welcome to Pimko. This is a test talkin
 
 复制 `.env.example` 为 `.env` 并填入 API Key。当前管线默认 `mock`，接入真实模型时把 `PIMKO_LLM_PROVIDER` 切到 `openai` 或 `anthropic`；`.env` 不会提交。
 
-产品需求、验收标准和路线图见 [docs/requirements.md](docs/requirements.md)。
+产品需求、验收标准和路线图见 [docs/requirements.md](docs/requirements.md)；测试素材清单与许可证见 [docs/testing-fixtures.md](docs/testing-fixtures.md)。
 
 ## 打包分发(Linux + Windows)
 

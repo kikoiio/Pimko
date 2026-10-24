@@ -1,15 +1,11 @@
-import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import type { MediaAsset } from '../domain/media'
 import type { Transcript } from '../domain/transcript'
 import type { Transcriber } from '../ports/transcriber'
+import { extractAudio } from './extract-audio'
 import type { LlmConfig } from './llm-config'
-import { resolveFfmpeg } from './ffmpeg-bin'
-
-const execFileAsync = promisify(execFile)
 
 interface TranscribedSegment {
   startSec?: number
@@ -27,19 +23,7 @@ export class OpenRouterTranscriber implements Transcriber {
   async transcribe(asset: MediaAsset): Promise<Transcript> {
     const workDir = await mkdtemp(path.join(tmpdir(), 'pimko-transcribe-'))
     try {
-      const audioPath = path.join(workDir, 'audio.mp3')
-      try {
-        await execFileAsync(resolveFfmpeg(), [
-          '-y', '-v', 'error', '-i', asset.absolutePath, '-vn', '-ac', '1', '-ar', '16000', audioPath,
-        ])
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        if (message.includes('does not contain any stream')) {
-          throw new Error('这段视频没有音轨，无法转写。请导入有说话声的口播视频，或切回 mock 模式测试界面。')
-        }
-        throw err
-      }
-      const audio = await readFile(audioPath)
+      const audio = await readFile(await extractAudio(asset, workDir))
       const baseUrl = this.config.transcribeBaseUrl ?? this.config.baseUrl ?? 'https://openrouter.ai/api/v1'
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
