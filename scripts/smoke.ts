@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { Editor } from '../src/services/editor'
+import { PreviewService } from '../src/services/preview'
 import { findFillerWords } from '../src/domain/fillers'
 import { FfmpegProber } from '../src/infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../src/infra/ffmpeg-renderer'
@@ -133,6 +134,20 @@ async function main(): Promise<void> {
     const fadeOutput = path.join(workDir, 'output-fade.mp4')
     await editor.export(faded.project.id, fadeOutput)
     console.log('crossfade export ok')
+
+    const previews = new PreviewService(new FfmpegRenderer(), path.join(workDir, 'previews'))
+    const preview = await previews.render(faded)
+    const repeatedPreview = await previews.render(faded)
+    if (preview.outputPath !== repeatedPreview.outputPath) throw new Error('效果预览缓存未命中')
+    const mediaHash = async (file: string, stream: string): Promise<string> => (await execFileAsync('ffmpeg', [
+      '-v', 'error', '-i', file, '-map', stream, '-f', 'hash', '-hash', 'sha256', '-',
+    ])).stdout.trim()
+    for (const stream of ['0:v:0', '0:a:0']) {
+      if (await mediaHash(preview.outputPath, stream) !== await mediaHash(fadeOutput, stream)) {
+        throw new Error(`同一修订的效果预览与导出不一致：${stream}`)
+      }
+    }
+    console.log('rendered preview matches export: crossfade + subtitles + BGM')
 
     // 旧项目迁移:模拟早期硬编码 1080x1920 的项目,恢复时应按素材尺寸修正并落成新修订。
     const legacy = structuredClone(draft.project)

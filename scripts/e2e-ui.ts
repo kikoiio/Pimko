@@ -155,6 +155,17 @@ async function main(): Promise<void> {
     if ((process.env.PIMKO_LLM_PROVIDER ?? 'mock') === 'mock') {
       const original = await page.evaluate(async (id) =>
         (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
+      await page.getByRole('button', { name: '查看实际效果' }).click()
+      await page.getByRole('tab', { name: '效果预览', exact: true }).waitFor({ timeout: 120000 })
+      await page.waitForFunction(() => {
+        const video = document.querySelector('video')
+        return video !== null && video.readyState >= 2 && video.videoWidth > 0 && video.playbackRate === 1
+      })
+      if (await page.locator('.subtitle-overlay').count() !== 0) throw new Error('效果预览重复叠加字幕')
+      const cachedPreviewUrl = await page.locator('video').getAttribute('src')
+      await page.getByRole('button', { name: '查看实际效果' }).click()
+      await page.getByRole('button', { name: '查看实际效果' }).waitFor()
+      if (await page.locator('video').getAttribute('src') !== cachedPreviewUrl) throw new Error('同版本预览未命中缓存')
       for (const speed of [2, 1]) {
         const bubbleCount = await page.locator('.bubble.agent').count()
         await page.getByRole('textbox', { name: '剪辑反馈' }).fill(`第一段 ${speed} 倍速`)
@@ -163,6 +174,7 @@ async function main(): Promise<void> {
         const updated = await page.evaluate(async (id) =>
           (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
         if ((updated.clips[0]?.speed ?? 1) !== speed) throw new Error(`界面变速未生效：${speed}`)
+        if (await page.getByRole('tab', { name: '效果预览', exact: true }).count() !== 0) throw new Error('修改后仍显示旧效果预览')
       }
       for (let i = 0; i < 2; i++) {
         const bubbleCount = await page.locator('.bubble.agent').count()

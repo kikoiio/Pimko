@@ -7,6 +7,7 @@ const api: PimkoApi = {
   restoreProject: (projectId) => ipcRenderer.invoke('project:restore', projectId),
   revise: (projectId, feedback) => ipcRenderer.invoke('project:revise', projectId, feedback),
   undo: (projectId) => ipcRenderer.invoke('project:undo', projectId),
+  renderPreview: (projectId, revisionId) => ipcRenderer.invoke('project:preview', projectId, revisionId),
   exportVideo: (projectId) => ipcRenderer.invoke('project:export', projectId),
   onExportProgress: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, progress: import('../ports/renderer').ExportProgress) => listener(progress)

@@ -13,6 +13,11 @@ export interface ExportResult {
   outputUrl: string
 }
 
+export interface PreviewResult {
+  revisionId: string
+  previewUrl: string
+}
+
 export interface ProjectSummary {
   projectId: string
   name: string
@@ -29,6 +34,7 @@ export interface PimkoApi {
   restoreProject(projectId: string): Promise<ImportResult>
   revise(projectId: string, feedback: string): Promise<ProjectRevision>
   undo(projectId: string): Promise<ProjectRevision>
+  renderPreview(projectId: string, revisionId: string): Promise<PreviewResult>
   exportVideo(projectId: string): Promise<ExportResult | null>
   onExportProgress(listener: (progress: ExportProgress) => void): void
   setBgm(projectId: string): Promise<ProjectRevision | null>
