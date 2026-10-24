@@ -34,10 +34,10 @@ export class OpenAiTranscriber implements Transcriber {
       form.append('model', this.config.transcribeModel ?? 'whisper-1')
       form.append('response_format', 'verbose_json')
 
-      const baseUrl = this.config.baseUrl ?? 'https://api.openai.com/v1'
+      const baseUrl = this.config.transcribeBaseUrl ?? this.config.baseUrl ?? 'https://api.openai.com/v1'
       const response = await fetch(`${baseUrl}/audio/transcriptions`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.config.apiKey}` },
+        headers: { Authorization: `Bearer ${this.config.transcribeApiKey ?? this.config.apiKey}` },
         body: form,
       })
       if (!response.ok) {
