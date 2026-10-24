@@ -14,6 +14,15 @@ npm run build
 npm run smoke     # 端到端冒烟：草稿 → 修订 → 导出
 ```
 
+没有素材时可以生成测试视频（已加入 .gitignore，不会提交）：
+
+```bash
+mkdir -p sample-assets
+ffmpeg -f lavfi -i 'testsrc=duration=15:size=640x360:rate=30' \
+       -f lavfi -i 'sine=frequency=330:duration=15' \
+       -c:v libx264 -pix_fmt yuv420p -c:a aac sample-assets/testsrc.mp4
+```
+
 ## LLM 配置
 
 复制 `.env.example` 为 `.env` 并填入 API Key。当前管线默认 `mock`，接入真实模型时把 `PIMKO_LLM_PROVIDER` 切到 `openai` 或 `anthropic`；`.env` 不会提交。

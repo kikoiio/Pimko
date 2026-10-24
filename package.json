@@ -5,7 +5,7 @@
   "description": "Conversational short-video editing agent",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev -- --no-sandbox",
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
@@ -26,5 +26,8 @@
     "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vite": "^5.4.11"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
   }
 }
