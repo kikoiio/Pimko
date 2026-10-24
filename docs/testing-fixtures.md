@@ -1,6 +1,6 @@
 # 测试素材
 
-两类素材,都不入库(`sample-assets/` 已在 .gitignore):
+三类素材,都不入库(`sample-assets/` 已在 .gitignore):
 
 | 目录 | 来源 | 需要网络 | 用途 |
 |------|------|----------|------|
@@ -46,6 +46,7 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 - `--extended` 额外生成短 4K 与 5 分钟视频，共 25 个；不默认在本机生成和跑渲染。
 - 全部是自生成测试内容，不需要下载、模型请求或 API Key。语音需要带 libflite 的 ffmpeg，缺少时直接失败，不以音调冒充口播。
 - 自动检查素材 SHA256、真实尺寸/时长/音轨，并检查旋转/SAR/VFR/音轨偏移是否真实存在；`--render` 对标记为可渲染的 8 个条目执行实际导出自检。其余条目仅验证素材属性或拒绝行为，不等于产品已支持。
+- 默认另外生成 7 个配乐文件：2 秒 WAV/MP3/M4A/AAC/OGG/FLAC，加 30 秒 WAV。`supportMedia` 记录哈希和时长，检查器验证实际解码；GUI 混音、循环与截断仍需试听。
 - `check-results.json` 区分自动检查结果与仍需人工验收的产品行为。弱音/噪声/音乐和静音幻听必须使用真实转写，mock 无法证明效果。
 
 ```bash
@@ -57,7 +58,7 @@ npm run check:boundaries -- --render        # 加实际渲染
 
 上述视频生成与渲染属于重型操作，优先使用 `.github/workflows/boundaries.yml` 的 GitHub Actions。
 它只用合成数据、无模型凭证，按单 worker 生成并提供 7 天有效的 `pimko-boundary-corpus` 测试附件；不创建 Release。
-附件中的故意损坏文件只应交给视频导入或探测器，不执行。4K 与长视频需手动开启扩展项。
+附件中的故意损坏文件只应交给视频导入或探测器，不执行。PR 检查包含两个扩展文件；手动触发时可选择是否开启扩展项。
 
 生成器尚未运行时不能把素材清单说成“文件已准备好”；以本次 CI 附件及 `check-results.json` 为准。
 

@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 import { BOUNDARY_CASES } from './boundary-cases'
 import { FfmpegProber } from '../src/infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../src/infra/ffmpeg-renderer'
 import { extractAudio } from '../src/infra/extract-audio'
-import { resolveFfprobe } from '../src/infra/ffmpeg-bin'
+import { resolveFfmpeg, resolveFfprobe } from '../src/infra/ffmpeg-bin'
 import type { Project } from '../src/domain/project'
 
 const exec = promisify(execFile)
@@ -16,7 +16,7 @@ const root = path.resolve(__dirname, '..')
 
 async function main(): Promise<void> {
   const corpus = path.join(root, 'sample-assets', 'boundaries')
-  const manifest: { extended: boolean; cases: { id: string; sha256: string }[] } = JSON.parse(await readFile(path.join(corpus, 'manifest.json'), 'utf8'))
+  const manifest: { extended: boolean; cases: { id: string; sha256: string }[]; supportMedia: { id: string; file: string; durationSec: number; sha256: string }[] } = JSON.parse(await readFile(path.join(corpus, 'manifest.json'), 'utf8'))
   await mkdir(path.join(root, '.tmp'), { recursive: true })
   const work = await mkdtemp(path.join(root, '.tmp', 'boundary-check-'))
   const results: { id: string; status: 'passed' | 'failed'; detail: string; productStatus: string }[] = []
@@ -69,6 +69,24 @@ async function main(): Promise<void> {
           await new FfmpegRenderer().render(project, path.join(caseWork, 'export.mp4'))
         }
         results.push({ id: spec.id, status: 'passed', detail: spec.render && process.argv.includes('--render') ? '素材属性 + 实际渲染自检通过' : '素材属性通过', productStatus: '真实转写、剪辑语义、画面和听感仍待人工验收' })
+      } catch (error) {
+        results.push({ id: spec.id, status: 'failed', detail: error instanceof Error ? error.message : String(error), productStatus: '未通过' })
+      }
+      console.log(`${results[results.length - 1]?.status}: ${spec.id}`)
+    }
+    for (const spec of manifest.supportMedia) {
+      try {
+        const file = path.join(corpus, spec.file)
+        assert.equal(createHash('sha256').update(await readFile(file)).digest('hex'), spec.sha256, '配乐素材 SHA256 不符')
+        const { stdout } = await exec(resolveFfprobe(), ['-v', 'error', '-show_streams', '-show_format', '-of', 'json', file], { maxBuffer: 1024 * 1024 })
+        const probe: { streams: { codec_type: string }[]; format: { duration: string } } = JSON.parse(stdout)
+        assert.ok(probe.streams.some((stream) => stream.codec_type === 'audio'))
+        assert.ok(!probe.streams.some((stream) => stream.codec_type === 'video'))
+        assert.ok(Math.abs(Number(probe.format.duration) - spec.durationSec) < 0.25)
+        const audio = path.join(work, `${spec.id}.wav`)
+        await exec(resolveFfmpeg(), ['-y', '-v', 'error', '-threads', '1', '-i', file, '-vn', '-c:a', 'pcm_s16le', audio], { timeout: 30000 })
+        assert.ok((await stat(audio)).size > 44)
+        results.push({ id: spec.id, status: 'passed', detail: '配乐哈希、音轨时长与实际解码通过', productStatus: 'GUI 添加、混音、循环与截断听感待人工验收' })
       } catch (error) {
         results.push({ id: spec.id, status: 'failed', detail: error instanceof Error ? error.message : String(error), productStatus: '未通过' })
       }

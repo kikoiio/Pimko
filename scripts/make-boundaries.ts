@@ -100,8 +100,17 @@ async function main(): Promise<void> {
       const bytes = await readFile(path.join(out, spec.file))
       cases.push({ ...spec, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') })
     }
+    const supportMedia = []
+    for (const [extension, codec] of [['wav', 'pcm_s16le'], ['mp3', 'libmp3lame'], ['m4a', 'aac'], ['aac', 'aac'], ['ogg', 'libvorbis'], ['flac', 'flac']] as const) {
+      for (const durationSec of extension === 'wav' ? [2, 30] : [2]) {
+        const file = `bgm-${durationSec}s.${extension}`
+        await encode(['-f', 'lavfi', '-i', `aevalsrc=0.15*sin(2*PI*220*t)+0.1*sin(2*PI*330*t):s=48000:d=${durationSec}`, '-c:a', codec, path.join(out, file)])
+        const bytes = await readFile(path.join(out, file))
+        supportMedia.push({ id: `bgm-${durationSec}s-${extension}`, file, durationSec, purpose: '自生成和弦音频，用于格式、短音频循环和长音频截断验收；没有真人语音', bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') })
+      }
+    }
     await writeFile(path.join(out, 'manifest.json'), `${JSON.stringify({
-      generatedAt: new Date().toISOString(), speech: true, extended, cases,
+      generatedAt: new Date().toISOString(), speech: true, extended, cases, supportMedia,
       transcript: 'Hello, um, keep this word. Goodbye.',
       caveat: '合成原音固定为 4 秒；噪声/弱音/音轨偏移项是待人工探测，不是已通过的能力声明。',
     }, null, 2)}\n`)
