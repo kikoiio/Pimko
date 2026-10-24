@@ -9,6 +9,7 @@ import { createIntelligence, createTranscriber } from '../src/infra/ai-factory'
 import { loadDotEnv } from '../src/infra/env'
 import { loadLlmConfig } from '../src/infra/llm-config'
 import { runMcpServer, type ToolDefinition } from '../src/mcp/server'
+import { timelineDurationSec } from '../src/domain/timeline'
 import type { ProjectRevision } from '../src/domain/project'
 
 /**
@@ -23,10 +24,7 @@ function revisionSummary(revision: ProjectRevision): Record<string, unknown> {
     endSec: Number(clip.sourceEndSec.toFixed(2)),
     ...(clip.speed !== undefined ? { speed: clip.speed } : {}),
   }))
-  const durationSec = revision.project.timeline.clips.reduce(
-    (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
-    0,
-  )
+  const durationSec = timelineDurationSec(revision.project.timeline)
   return {
     projectId: revision.project.id,
     revisionId: revision.id,

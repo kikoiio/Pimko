@@ -15,6 +15,7 @@ import { loadDotEnv } from '../infra/env'
 import { loadLlmConfig } from '../infra/llm-config'
 import type { LlmConfig } from '../infra/llm-config'
 import type { ExportProgress } from '../ports/renderer'
+import { timelineDurationSec } from '../domain/timeline'
 import type { ProjectSummary } from '../shared/api'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
@@ -94,10 +95,7 @@ function registerIpc(): void {
         revisionId: revision.id,
         updatedAt: revision.createdAt,
         clipCount: revision.project.timeline.clips.length,
-        durationSec: revision.project.timeline.clips.reduce(
-          (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
-          0,
-        ),
+        durationSec: timelineDurationSec(revision.project.timeline),
         sourceUrl: asset ? mediaUrl(pathToFileURL(asset.absolutePath).href) : '',
       }
     })

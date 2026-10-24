@@ -16,17 +16,19 @@ interface LlmClip {
 
 interface LlmPlan {
   clips: LlmClip[]
+  transitions?: ('cut' | 'crossfade')[]
   reply: string
 }
 
 const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不懂剪辑的用户。
 根据口播转写片段和用户反馈，决定保留哪些片段、如何微调边界、以及片段的播放速度。
 只返回 JSON，不要输出任何其他文字，格式：
-{"clips":[{"segmentIndex":0,"startSec":0.0,"endSec":4.2,"speed":1.5}],"reply":"给用户的一句中文说明"}
+{"clips":[{"segmentIndex":0,"startSec":0.0,"endSec":4.2,"speed":1.5}],"transitions":["cut","crossfade"],"reply":"给用户的一句中文说明"}
 规则：
 - clips 按播放顺序排列，只使用给出的 segmentIndex，可重排；
 - startSec/endSec 必须落在对应转写片段时间内，可微调边界但不能跨越相邻片段；
 - speed 可选，范围 0.5–2.0，缺省或 1 为原速；用户嫌某段啰嗦但内容要保留时，优先设 1.2–1.5 倍速而不是删除；
+- transitions 可选，长度为 clips 数减一，描述相邻片段衔接；口播默认全 "cut"，用户明确要柔和/叠化衔接时才用 "crossfade"；
 - 用户要求更紧凑时，优先删除口癖、重复、停顿，其次适度变速；
 - 转写下方会给出机械检测的固定口癖与语境口癖：固定口癖默认删除，语境口癖由你判断是否有语义；
 - 删除口癖的方法是把所在片段拆成两段、绕开该词的起止时间（同一 segmentIndex 可对应多个 clips）；
@@ -50,7 +52,7 @@ export class OpenAiIntelligence implements EditingIntelligence {
         note: '模型输出无效，已按确定性预剪(停顿压缩)建稿，请继续对话调整。',
       }
     }
-    return { timeline: this.toTimeline(plan.clips, transcript, transcript.assetId), note: plan.reply }
+    return { timeline: this.toTimeline(plan, transcript, transcript.assetId), note: plan.reply }
   }
 
   async reviseTimeline(project: Project, feedback: Feedback): Promise<EditPlan> {
@@ -67,7 +69,7 @@ export class OpenAiIntelligence implements EditingIntelligence {
       throw new Error('模型连续返回无效结果，已保留上一版。请稍后重试或换个说法。')
     }
     return {
-      timeline: this.toTimeline(plan.clips, transcript, project.assets[0]!.id),
+      timeline: this.toTimeline(plan, transcript, project.assets[0]!.id),
       note: plan.reply,
     }
   }
@@ -147,7 +149,8 @@ export class OpenAiIntelligence implements EditingIntelligence {
     return null
   }
 
-  private toTimeline(llmClips: LlmClip[], transcript: Transcript, assetId: string): Timeline {
+  private toTimeline(plan: LlmPlan, transcript: Transcript, assetId: string): Timeline {
+    const llmClips = plan.clips
     const clips: Timeline['clips'] = []
     for (const llmClip of llmClips) {
       const segment = transcript.segments[llmClip.segmentIndex]
@@ -177,7 +180,11 @@ export class OpenAiIntelligence implements EditingIntelligence {
             text: segment.text,
           }]
         }),
-      transitions: clips.slice(1).map(() => ({ type: 'cut' as const })),
+      transitions: clips.slice(1).map((_, index) =>
+        plan.transitions?.[index] === 'crossfade'
+          ? { type: 'crossfade' as const, durationSec: 0.3 }
+          : { type: 'cut' as const },
+      ),
     }
   }
 
@@ -217,7 +224,7 @@ function clamp(value: number, min: number, max: number): number {
 /** 客户端 schema 校验：OpenRouter 的结构化输出只按端点尽力而为，不能信任原生约束。 */
 function isLlmPlan(value: unknown): value is LlmPlan {
   if (typeof value !== 'object' || value === null) return false
-  const { clips, reply } = value as { clips?: unknown; reply?: unknown }
+  const { clips, reply, transitions } = value as { clips?: unknown; reply?: unknown; transitions?: unknown }
   if (!Array.isArray(clips)) return false
   for (const clip of clips) {
     if (typeof clip !== 'object' || clip === null) return false
@@ -230,5 +237,11 @@ function isLlmPlan(value: unknown): value is LlmPlan {
     }
   }
   if (reply !== undefined && typeof reply !== 'string') return false
+  if (transitions !== undefined) {
+    if (!Array.isArray(transitions)) return false
+    for (const transition of transitions) {
+      if (transition !== 'cut' && transition !== 'crossfade') return false
+    }
+  }
   return true
 }

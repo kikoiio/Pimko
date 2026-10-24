@@ -63,9 +63,19 @@ export class MockIntelligence implements EditingIntelligence {
         note: `已把第 1 段设为 ${speed} 倍速（mock 演示逻辑）。`,
       }
     }
+    if (/转场|叠化/.test(feedback.text) && timeline.clips.length > 1) {
+      // mock 演示:全部衔接改为 0.3s 叠化,驱动冒烟验证 xfade 渲染路径。
+      return {
+        timeline: {
+          ...timeline,
+          transitions: timeline.clips.slice(1).map(() => ({ type: 'crossfade' as const, durationSec: 0.3 })),
+        },
+        note: '已把片段衔接改为 0.3s 叠化（mock 演示逻辑；预览仍是硬切，导出生效）。',
+      }
+    }
     return {
       timeline: structuredClone(timeline),
-      note: 'mock 模式只演示“开头太拖”和“N 倍速”这两种反馈，其他反馈暂不改动时间线。',
+      note: 'mock 模式只演示「开头太拖」「N 倍速」「转场」这几种反馈，其他反馈暂不改动时间线。',
     }
   }
 }

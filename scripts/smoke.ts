@@ -124,6 +124,15 @@ async function main(): Promise<void> {
     const bgmOutput = path.join(workDir, 'output-bgm.mp4')
     await editor.export(quieter.project.id, bgmOutput)
     console.log(`bgm export ok (revision ${withBgm.id.slice(0, 8)} → volume -24dB)`)
+
+    // 转场:叠化渲染路径(xfade+acrossfade+字幕+BGM 单趟合成),时长应扣除叠化重叠。
+    const faded = await editor.revise(quieter.project.id, { text: '片段之间加个柔和转场' })
+    if (!faded.project.timeline.transitions.some((t) => t.type === 'crossfade')) {
+      throw new Error('转场未生效')
+    }
+    const fadeOutput = path.join(workDir, 'output-fade.mp4')
+    await editor.export(faded.project.id, fadeOutput)
+    console.log('crossfade export ok')
   } finally {
     await rm(workDir, { recursive: true, force: true })
   }

@@ -27,5 +27,20 @@ export interface Timeline {
   clips: TimelineClip[]
   subtitles: SubtitleCue[]
   bgm?: BgmTrack
+  /** transitions[i] 衔接 clips[i] 与 clips[i+1];缺省视为硬切。 */
   transitions: Transition[]
+}
+
+/** 叠化会吞掉重叠时长;渲染、预览、列表、MCP 的时长口径统一走这里。 */
+export function transitionDuration(transition: Transition | undefined): number {
+  return transition?.type === 'crossfade' ? transition.durationSec : 0
+}
+
+export function timelineDurationSec(timeline: Timeline): number {
+  let total = 0
+  timeline.clips.forEach((clip, index) => {
+    total += (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1)
+    if (index > 0) total -= transitionDuration(timeline.transitions[index - 1])
+  })
+  return total
 }

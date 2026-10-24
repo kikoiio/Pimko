@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectRevision } from '../../domain/project'
 import { findFillerWords } from '../../domain/fillers'
+import { timelineDurationSec, transitionDuration } from '../../domain/timeline'
 import type { ExportProgress, ExportResult, ImportResult, PimkoApi, ProjectSummary } from '../../shared/api'
 
 declare global {
@@ -31,10 +32,7 @@ function nextMessageId(): string {
 }
 
 function totalDuration(revision: ProjectRevision): number {
-  return revision.project.timeline.clips.reduce(
-    (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
-    0,
-  )
+  return timelineDurationSec(revision.project.timeline)
 }
 
 function fmt(seconds: number): string {
@@ -50,6 +48,8 @@ interface TimelineEntry {
 function buildTimeline(revision: ProjectRevision): TimelineEntry[] {
   let outputStart = 0
   return revision.project.timeline.clips.map((clip, clipIndex) => {
+    // 叠化吞掉相邻重叠,与导出口径一致。
+    if (clipIndex > 0) outputStart -= transitionDuration(revision.project.timeline.transitions[clipIndex - 1])
     const length = Math.max(0, (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1))
     const entry = { clipIndex, outputStart, outputEnd: outputStart + length }
     outputStart += length
