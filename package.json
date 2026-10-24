@@ -39,5 +39,9 @@
   "allowScripts": {
     "electron@33.4.11": true,
     "ffmpeg-static@5.3.0": true
+  },
+  "author": {
+    "name": "kikoiio",
+    "email": "kikoiio@users.noreply.github.com"
   }
 }
