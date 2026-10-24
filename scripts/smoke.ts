@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { Editor } from '../src/services/editor'
 import { FfmpegProber } from '../src/infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../src/infra/ffmpeg-renderer'
+import { FfmpegSilenceAnalyzer } from '../src/infra/ffmpeg-silence-analyzer'
 import { FsProjectStore } from '../src/infra/fs-store'
 import { MockIntelligence } from '../src/infra/mock-intelligence'
 import { MockTranscriber } from '../src/infra/mock-transcriber'
@@ -16,10 +17,15 @@ async function main(): Promise<void> {
   const workDir = await mkdtemp(path.join(tmpdir(), 'pimko-smoke-'))
   try {
     const inputPath = path.join(workDir, 'input.mp4')
+    // 音频构造为 响2s + 静音1s + 响2s：确定性静音分析要能在素材里找到这 1 秒。
     await execFileAsync('ffmpeg', [
       '-y', '-v', 'error',
       '-f', 'lavfi', '-i', 'testsrc=duration=5:size=640x360:rate=30',
-      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=5',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+      '-f', 'lavfi', '-i', 'anullsrc=duration=1:r=44100',
+      '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2',
+      '-filter_complex', '[1:a][2:a][3:a]concat=n=3:v=0:a=1[a]',
+      '-map', '0:v', '-map', '[a]',
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
       inputPath,
     ])
@@ -31,10 +37,16 @@ async function main(): Promise<void> {
       intelligence: new MockIntelligence(),
       renderer: new FfmpegRenderer(),
       store: new FsProjectStore(storeRoot),
+      silenceAnalyzer: new FfmpegSilenceAnalyzer(),
     })
 
     const draft = await editor.createDraft(inputPath, 'smoke')
     console.log(`draft: ${draft.project.timeline.clips.length} clips`)
+    const silenceGap = draft.project.silences ?? []
+    if (silenceGap.length !== 1 || Math.abs((silenceGap[0]!.endSec - silenceGap[0]!.startSec) - 1) > 0.3) {
+      throw new Error(`静音分析不符: ${JSON.stringify(silenceGap)}`)
+    }
+    console.log(`silence ok: ${silenceGap[0]!.startSec.toFixed(2)}-${silenceGap[0]!.endSec.toFixed(2)}s`)
     const asset = draft.project.assets[0]!
     if (draft.project.settings.width !== asset.width || draft.project.settings.height !== asset.height) {
       throw new Error(`导出尺寸应跟随源视频: got ${draft.project.settings.width}x${draft.project.settings.height}, source ${asset.width}x${asset.height}`)

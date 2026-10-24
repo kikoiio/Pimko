@@ -1,10 +1,11 @@
+import type { SilenceInterval } from '../domain/analysis'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
 import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
 
 export class MockIntelligence implements EditingIntelligence {
-  async draftTimeline(transcript: Transcript, _settings: ProjectSettings): Promise<EditPlan> {
+  async draftTimeline(transcript: Transcript, _settings: ProjectSettings, _silences?: SilenceInterval[]): Promise<EditPlan> {
     const clips = transcript.segments.map((segment) => ({
       assetId: transcript.assetId,
       sourceStartSec: segment.startSec,

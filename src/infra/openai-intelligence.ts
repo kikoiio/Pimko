@@ -1,3 +1,4 @@
+import type { SilenceInterval } from '../domain/analysis'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import type { Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
@@ -30,8 +31,15 @@ const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不
 export class OpenAiIntelligence implements EditingIntelligence {
   constructor(private readonly config: LlmConfig) {}
 
-  async draftTimeline(transcript: Transcript, settings: ProjectSettings): Promise<EditPlan> {
-    const plan = await this.plan(transcript, '这是初始草稿：请保留全部有效内容，只剪掉明显的口癖和长停顿。')
+  async draftTimeline(
+    transcript: Transcript,
+    settings: ProjectSettings,
+    silences?: SilenceInterval[],
+  ): Promise<EditPlan> {
+    const plan = await this.plan(
+      transcript,
+      `这是初始草稿：请保留全部有效内容，只剪掉明显的口癖和长停顿。${this.silenceBlock(silences)}`,
+    )
     if (!plan) {
       return {
         timeline: this.fullTimeline(transcript),
@@ -48,7 +56,7 @@ export class OpenAiIntelligence implements EditingIntelligence {
       .join('\\n')
     const plan = await this.plan(
       transcript,
-      `当前时间线：\n${current}\n\n用户反馈：${feedback.text}`,
+      `当前时间线：\n${current}\n\n用户反馈：${feedback.text}${this.silenceBlock(project.silences)}`,
     )
     if (!plan) {
       // 重试耗尽仍无效：宁可报错也不静默沿用旧时间线，让用户知道这轮没生效。
@@ -58,6 +66,15 @@ export class OpenAiIntelligence implements EditingIntelligence {
       timeline: this.toTimeline(plan.clips, transcript, project.assets[0]!.id),
       note: plan.reply,
     }
+  }
+
+  /** 静音图作为第二事实源进 prompt：LLM 拿它微调切点，而不是自己猜停顿。 */
+  private silenceBlock(silences?: SilenceInterval[]): string {
+    if (!silences || silences.length === 0) return ''
+    const lines = silences
+      .map((interval) => `- ${interval.startSec.toFixed(2)}-${interval.endSec.toFixed(2)}s（长 ${(interval.endSec - interval.startSec).toFixed(2)}s）`)
+      .join('\n')
+    return `\n\n确定性检测到的静音/长停顿（切点参考：长停顿可剪掉，边界各留约 0.15s 余量，避免切到语音）：\n${lines}`
   }
 
   private async plan(transcript: Transcript, userMessage: string): Promise<LlmPlan | null> {

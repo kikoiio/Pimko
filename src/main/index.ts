@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Editor } from '../services/editor'
 import { FfmpegProber } from '../infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../infra/ffmpeg-renderer'
+import { FfmpegSilenceAnalyzer } from '../infra/ffmpeg-silence-analyzer'
 import { FsProjectStore } from '../infra/fs-store'
 import { MockIntelligence } from '../infra/mock-intelligence'
 import { createIntelligence, createTranscriber } from '../infra/ai-factory'
@@ -57,6 +58,7 @@ function createEditor(): Editor {
     intelligence: createIntelligence(config),
     renderer: new FfmpegRenderer(),
     store: new FsProjectStore(path.join(app.getPath('userData'), 'projects')),
+    silenceAnalyzer: new FfmpegSilenceAnalyzer(),
   })
 }
 
@@ -88,7 +90,7 @@ function registerIpc(): void {
         updatedAt: revision.createdAt,
         clipCount: revision.project.timeline.clips.length,
         durationSec: revision.project.timeline.clips.reduce(
-          (sum, clip) => sum + clip.sourceEndSec - clip.sourceStartSec,
+          (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
           0,
         ),
         sourceUrl: asset ? mediaUrl(pathToFileURL(asset.absolutePath).href) : '',

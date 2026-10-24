@@ -1,6 +1,7 @@
 import type { MediaAsset } from '../domain/media'
 import type { Feedback, Project, ProjectId, ProjectRevision } from '../domain/project'
 import { randomUUID } from 'node:crypto'
+import type { SilenceAnalyzer } from '../ports/analyzer'
 import type { EditingIntelligence } from '../ports/intelligence'
 import type { Prober } from '../ports/prober'
 import type { ProjectStore } from '../ports/store'
@@ -13,6 +14,8 @@ export interface EditorDeps {
   intelligence: EditingIntelligence
   renderer: Renderer
   store: ProjectStore
+  /** 静音分析为可选增强：缺失或失败时降级为无静音图，不阻断建稿。 */
+  silenceAnalyzer?: SilenceAnalyzer
 }
 
 export class Editor {
@@ -21,16 +24,18 @@ export class Editor {
   async createDraft(videoPath: string, name?: string): Promise<ProjectRevision> {
     const asset = await this.deps.prober.probe(videoPath)
     const transcript = await this.deps.transcriber.transcribe(asset)
+    const silences = await this.analyzeSilences(asset)
     const width = evenDimension(asset.width ?? 1080)
     const height = evenDimension(asset.height ?? 1920)
     if (width === 0 || height === 0) throw new Error('无法读取视频尺寸，导出前需要有效的宽高。')
     const settings = { width, height, fps: 30, subtitleStyle: 'bold-center' as const }
-    const plan = await this.deps.intelligence.draftTimeline(transcript, settings)
+    const plan = await this.deps.intelligence.draftTimeline(transcript, settings, silences)
     const project: Project = {
       id: randomUUID(),
       name: name ?? videoPath.split('/').pop() ?? '未命名项目',
       assets: [asset],
       transcript,
+      ...(silences.length > 0 ? { silences } : {}),
       timeline: plan.timeline,
       settings,
     }
@@ -42,6 +47,16 @@ export class Editor {
     }
     await this.deps.store.save(revision)
     return revision
+  }
+
+  /** 静音图是增强事实源：分析失败（如无音轨的 mock 素材）不应阻断建稿。 */
+  private async analyzeSilences(asset: MediaAsset): Promise<{ startSec: number; endSec: number }[]> {
+    if (!this.deps.silenceAnalyzer) return []
+    try {
+      return await this.deps.silenceAnalyzer.analyze(asset)
+    } catch {
+      return []
+    }
   }
 
   async listProjects(): Promise<ProjectRevision[]> {

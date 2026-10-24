@@ -1,3 +1,4 @@
+import type { SilenceInterval } from './analysis'
 import type { MediaAsset } from './media'
 import type { Timeline } from './timeline'
 import type { Transcript } from './transcript'
@@ -18,6 +19,8 @@ export interface Project {
   assets: MediaAsset[]
   /** 原始转写是修订循环的事实源；字幕只是时间线的投影。 */
   transcript?: Transcript
+  /** 确定性静音分析结果，与转写同级的第二事实源。 */
+  silences?: SilenceInterval[]
   timeline: Timeline
   settings: ProjectSettings
 }
