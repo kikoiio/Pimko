@@ -50,7 +50,7 @@ async function main(): Promise<void> {
       } else if (spec.id === 'webm') {
         await encode(['-i', base, '-c:v', 'libvpx-vp9', '-threads', '1', '-deadline', 'realtime', '-cpu-used', '8', '-c:a', 'libopus', dest])
       } else if (spec.id === 'rotate90') {
-        await encode(['-i', base, '-c', 'copy', '-metadata:s:v:0', 'rotate=90', dest])
+        await encode(['-display_rotation', '90', '-i', base, '-c', 'copy', dest])
       } else if (spec.id === 'sar') {
         await encode(['-i', base, '-vf', 'setsar=4/3', ...h264, '-c:a', 'copy', dest])
       } else if (spec.id === 'vfr') {
