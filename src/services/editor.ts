@@ -71,8 +71,7 @@ export class Editor {
   }
 
   async revise(projectId: ProjectId, feedback: Feedback): Promise<ProjectRevision> {
-    const current = await this.deps.store.latest(projectId)
-    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const current = await this.currentRevision(projectId)
     const plan = await this.deps.intelligence.reviseTimeline(current.project, feedback)
     if (plan.timeline.clips.length === 0) {
       throw new Error('这次修改会让成片变空，已保留上一版。')
@@ -92,8 +91,7 @@ export class Editor {
 
   /** 撤销:把上一版时间线作为新修订入链——历史不丢,可连续撤销。 */
   async undo(projectId: ProjectId): Promise<ProjectRevision> {
-    const current = await this.deps.store.latest(projectId)
-    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const current = await this.currentRevision(projectId)
     if (!current.parentRevisionId) throw new Error('已经是第一版，没有可撤销的修改。')
     const parent = await this.deps.store.get(projectId, current.parentRevisionId)
     if (!parent) throw new Error('找不到上一版记录，无法撤销。')
@@ -111,7 +109,41 @@ export class Editor {
   }
 
   async restore(projectId: ProjectId): Promise<ProjectRevision | undefined> {
-    return this.deps.store.latest(projectId)
+    const latest = await this.deps.store.latest(projectId)
+    if (!latest) return undefined
+    return this.reconcileSettings(latest)
+  }
+
+  /**
+   * 旧项目迁移：早期版本把导出尺寸硬编码为 1080x1920，
+   * 恢复时按素材实际尺寸修正，避免竖屏画布装横向素材（上下黑边）。
+   * 修正结果落成一条新修订，幂等：修好后再调用不会再产生修订。
+   */
+  private async reconcileSettings(revision: ProjectRevision): Promise<ProjectRevision> {
+    const asset = revision.project.assets[0]
+    if (!asset?.width || !asset?.height) return revision
+    const width = evenDimension(asset.width)
+    const height = evenDimension(asset.height)
+    if (width === 0 || height === 0) return revision
+    const { settings } = revision.project
+    if (width === settings.width && height === settings.height) return revision
+    const repaired: ProjectRevision = {
+      id: randomUUID(),
+      project: { ...revision.project, settings: { ...settings, width, height } },
+      parentRevisionId: revision.id,
+      feedback: { text: '自动修正导出尺寸' },
+      agentNote: `导出尺寸已按素材修正为 ${width}×${height}（原为 ${settings.width}×${settings.height}）。`,
+      createdAt: new Date().toISOString(),
+    }
+    await this.deps.store.save(repaired)
+    return repaired
+  }
+
+  /** 读取最新修订并顺带修正旧项目的导出尺寸。 */
+  private async currentRevision(projectId: ProjectId): Promise<ProjectRevision> {
+    const latest = await this.deps.store.latest(projectId)
+    if (!latest) throw new Error(`项目不存在: ${projectId}`)
+    return this.reconcileSettings(latest)
   }
 
   async export(
@@ -119,8 +151,7 @@ export class Editor {
     outputPath: string,
     onProgress?: (progress: ExportProgress) => void,
   ): Promise<string> {
-    const current = await this.deps.store.latest(projectId)
-    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const current = await this.currentRevision(projectId)
     if (current.project.timeline.clips.length === 0) {
       throw new Error('时间线没有任何片段，无法导出。')
     }
@@ -129,8 +160,7 @@ export class Editor {
   }
 
   async setBgm(projectId: ProjectId, bgmPath: string, gainDb = -18): Promise<ProjectRevision> {
-    const current = await this.deps.store.latest(projectId)
-    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const current = await this.currentRevision(projectId)
     const revision: ProjectRevision = {
       id: randomUUID(),
       project: {
@@ -148,8 +178,7 @@ export class Editor {
 
   /** BGM 音量三档之外也允许连续值;范围收紧在 -40–0dB 防呆。 */
   async setBgmVolume(projectId: ProjectId, gainDb: number): Promise<ProjectRevision> {
-    const current = await this.deps.store.latest(projectId)
-    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const current = await this.currentRevision(projectId)
     const bgm = current.project.timeline.bgm
     if (!bgm) throw new Error('还没有添加配乐，请先添加配乐再调音量。')
     if (!Number.isFinite(gainDb) || gainDb < -40 || gainDb > 0) {
@@ -171,8 +200,7 @@ export class Editor {
   }
 
   async removeBgm(projectId: ProjectId): Promise<ProjectRevision> {
-    const current = await this.deps.store.latest(projectId)
-    if (!current) throw new Error(`项目不存在: ${projectId}`)
+    const current = await this.currentRevision(projectId)
     const { bgm: _removed, ...timeline } = current.project.timeline
     const revision: ProjectRevision = {
       id: randomUUID(),

@@ -133,6 +133,22 @@ async function main(): Promise<void> {
     const fadeOutput = path.join(workDir, 'output-fade.mp4')
     await editor.export(faded.project.id, fadeOutput)
     console.log('crossfade export ok')
+
+    // 旧项目迁移:模拟早期硬编码 1080x1920 的项目,恢复时应按素材尺寸修正并落成新修订。
+    const legacy = structuredClone(draft.project)
+    legacy.settings = { ...legacy.settings, width: 1080, height: 1920 }
+    await new FsProjectStore(storeRoot).save({
+      id: 'legacy-revision',
+      project: legacy,
+      createdAt: new Date(Date.now() + 1000).toISOString(),
+    })
+    const repaired = await editor.restore(legacy.id)
+    if (!repaired || repaired.project.settings.width !== 640 || repaired.project.settings.height !== 360) {
+      throw new Error(`旧项目尺寸未修正: ${JSON.stringify(repaired?.project.settings)}`)
+    }
+    const repairedOutput = path.join(workDir, 'output-repaired.mp4')
+    await editor.export(legacy.id, repairedOutput)
+    console.log('legacy settings repair ok: 1080x1920 → 640x360')
   } finally {
     await rm(workDir, { recursive: true, force: true })
   }

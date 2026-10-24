@@ -35,6 +35,8 @@ export class FfmpegRenderer implements Renderer {
         const videoFilters = [
           `scale=${project.settings.width}:${project.settings.height}:force_original_aspect_ratio=decrease`,
           `pad=${project.settings.width}:${project.settings.height}:(ow-iw)/2:(oh-ih)/2`,
+          // 强制方形像素：源素材 SAR 非 1:1 时，缩放后会在播放器里被轻微拉伸。
+          'setsar=1',
         ]
         if (speed !== 1) videoFilters.push(`setpts=PTS/${speed}`)
         const args = [
