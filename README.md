@@ -23,6 +23,14 @@ ffmpeg -f lavfi -i 'testsrc=duration=15:size=640x360:rate=30' \
        -c:v libx264 -pix_fmt yuv420p -c:a aac sample-assets/testsrc.mp4
 ```
 
+带真实语音的素材（需要 ffmpeg 编译了 libflite，Ubuntu 仓库版默认带）：
+
+```bash
+ffmpeg -f lavfi -i "flite=text=Hello and welcome to Pimko. This is a test talking head video.:voice=slt" \
+       -f lavfi -i 'testsrc=duration=8:size=640x360:rate=30' \
+       -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac sample-assets/voice.mp4
+```
+
 ## LLM 配置
 
 复制 `.env.example` 为 `.env` 并填入 API Key。当前管线默认 `mock`，接入真实模型时把 `PIMKO_LLM_PROVIDER` 切到 `openai` 或 `anthropic`；`.env` 不会提交。

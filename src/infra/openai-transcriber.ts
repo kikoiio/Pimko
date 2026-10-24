@@ -17,9 +17,17 @@ export class OpenAiTranscriber implements Transcriber {
     const workDir = await mkdtemp(path.join(tmpdir(), 'pimko-transcribe-'))
     try {
       const audioPath = path.join(workDir, 'audio.mp3')
-      await execFileAsync('ffmpeg', [
-        '-y', '-v', 'error', '-i', asset.absolutePath, '-vn', '-ac', '1', '-ar', '16000', audioPath,
-      ])
+      try {
+        await execFileAsync('ffmpeg', [
+          '-y', '-v', 'error', '-i', asset.absolutePath, '-vn', '-ac', '1', '-ar', '16000', audioPath,
+        ])
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (message.includes('does not contain any stream')) {
+          throw new Error('这段视频没有音轨，无法转写。请导入有说话声的口播视频，或切回 mock 模式测试界面。')
+        }
+        throw err
+      }
       const audio = await readFile(audioPath)
       const form = new FormData()
       form.append('file', new Blob([audio], { type: 'audio/mpeg' }), 'audio.mp3')
