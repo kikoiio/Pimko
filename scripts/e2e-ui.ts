@@ -1,6 +1,6 @@
 import { _electron as electron } from 'playwright'
 import { execFile } from 'node:child_process'
-import { mkdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -50,15 +50,37 @@ async function main(): Promise<void> {
     })
     const agentBubbles = await page.locator('.bubble.agent').count()
     const clips = await page.locator('.clip').count()
+    const videoBox = await video.boundingBox()
+    const stageBox = await page.locator('.stage').boundingBox()
+    const renderedRatio = videoBox && videoBox.height > 0 ? videoBox.width / videoBox.height : 0
+    const intrinsicRatio = status.videoWidth / status.videoHeight
+    const stageFits = videoBox && stageBox
+      ? videoBox.width <= stageBox.width + 1 && videoBox.height <= stageBox.height + 1
+      : false
+    const screenshot = await page.screenshot({ path: path.join(tmpDir, 'pimko-e2e.png') })
+    await writeFile(path.join(tmpDir, 'pimko-e2e-result.json'), `${JSON.stringify({
+      status,
+      agentBubbles,
+      clips,
+      videoBox,
+      renderedRatio,
+      intrinsicRatio,
+      stageFits,
+    }, null, 2)}\n`)
 
-    const result = { status, agentBubbles, clips }
-    console.log(JSON.stringify(result, null, 2))
+    console.log(`screenshot: ${screenshot}`)
 
     if (status.videoWidth === 0 || status.readyState < 2) {
       throw new Error(`视频未真正加载: ${JSON.stringify(status)}`)
     }
     if (agentBubbles < 1 || clips < 1) {
       throw new Error(`草稿 UI 未渲染: bubbles=${agentBubbles} clips=${clips}`)
+    }
+    if (!stageFits) {
+      throw new Error(`视频超出预览区: video=${JSON.stringify(videoBox)} stage=${JSON.stringify(stageBox)}`)
+    }
+    if (Math.abs(renderedRatio - intrinsicRatio) > 0.05) {
+      throw new Error(`视频渲染比例失真: rendered=${renderedRatio.toFixed(3)} intrinsic=${intrinsicRatio.toFixed(3)}`)
     }
   } finally {
     await app.close()
