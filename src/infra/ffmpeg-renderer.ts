@@ -7,6 +7,7 @@ import type { Project } from '../domain/project'
 import { timelineDurationSec, transitionDuration, type Timeline, type Transition } from '../domain/timeline'
 import type { ExportProgress, RenderResult, Renderer } from '../ports/renderer'
 import { resolveFfmpeg, resolveFfprobe } from './ffmpeg-bin'
+import { buildAss } from './subtitles-ass'
 
 const execFileAsync = promisify(execFile)
 
@@ -182,50 +183,4 @@ export class FfmpegRenderer implements Renderer {
 
 function countCrossfades(timeline: Timeline): number {
   return timeline.transitions.filter((transition: Transition) => transition?.type === 'crossfade').length
-}
-
-function buildAss(project: Project): string {
-  const header = [
-    '[Script Info]',
-    'ScriptType: v4.00+',
-    `PlayResX: ${project.settings.width}`,
-    `PlayResY: ${project.settings.height}`,
-    '',
-    '[V4+ Styles]',
-    'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    'Style: Default,Noto Sans CJK SC,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,80,80,120,1',
-    '',
-    '[Events]',
-    'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-  ].join('\n')
-
-    // 字幕与 clip 部分重叠时裁剪到 clip 内，避免 LLM 微调边界后整句丢失。
-  // 变速片段内字幕时间同样除以 speed，与播放节奏一致。
-  const events: string[] = []
-  let outputStart = 0
-  for (const [index, clip] of project.timeline.clips.entries()) {
-    // 叠化吞掉相邻片段的重叠时长,后续字幕整体前移。
-    if (index > 0) outputStart -= transitionDuration(project.timeline.transitions[index - 1])
-    const speed = clip.speed ?? 1
-    const length = (clip.sourceEndSec - clip.sourceStartSec) / speed
-    for (const cue of project.timeline.subtitles) {
-        const overlapStart = Math.max(cue.startSec, clip.sourceStartSec)
-        const overlapEnd = Math.min(cue.endSec, clip.sourceEndSec)
-        if (overlapStart < overlapEnd) {
-        events.push(
-              `Dialogue: 0,${toAssTime(outputStart + (overlapStart - clip.sourceStartSec) / speed)},${toAssTime(outputStart + (overlapEnd - clip.sourceStartSec) / speed)},Default,,0,0,0,,${cue.text}`,
-        )
-      }
-    }
-    outputStart += length
-  }
-  return `${header}\n${events.join('\n')}\n`
-}
-
-function toAssTime(seconds: number): string {
- const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = Math.floor(seconds % 60)
-  const cs = Math.round((seconds - Math.floor(seconds)) * 100)
-  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
 }

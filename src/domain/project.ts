@@ -45,7 +45,13 @@ export interface RevisionDiff {
 export interface ProjectRevision {
   id: RevisionId
   project: Project
+  /** 追加历史中的直接前驱；撤销也追加修订，不改写旧记录。 */
   parentRevisionId?: RevisionId
+  /** 缺省表示旧版记录；撤销游标与追加历史的前驱分开保存。 */
+  operation?:
+    | { kind: 'edit' }
+    | { kind: 'undo'; restoredRevisionId: RevisionId }
+    | { kind: 'settings-migration' }
   feedback?: Feedback
   agentNote?: string
   /** 相对上一版的可读对比;首个草稿没有。 */

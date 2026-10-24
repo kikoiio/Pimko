@@ -2,7 +2,7 @@
 
 对话式短视频剪辑 agent。第一用户是不懂剪辑的创作者：导入口播素材，用自然语言反馈，得到可直接发布的成片。
 
-当前状态：M4「剪辑工具面扩展」——词级转写、确定性静音分析、口癖检测、按段变速、LLM 输出加固，以及本地 MCP 服务器（外部 agent 可驱动同一引擎）。领域模型与 ports 见 `docs/architecture.md`，需求与里程碑见 `docs/requirements.md`，先行调研见 `docs/research/`。
+当前状态：已实现词级转写、停顿分析、口癖检测、按段变速、撤销、配乐、叠化导出及本地 MCP。当前开发重点是连续修改后的字幕、配乐和历史一致性；真实模型完整验收仍受免费服务限流影响。领域模型与 ports 见 `docs/architecture.md`，需求与里程碑见 `docs/requirements.md`，先行调研见 `docs/research/`。
 
 ## 开发
 
@@ -10,6 +10,7 @@
 npm install
 npm run dev       # Electron 开发模式
 npm run typecheck
+npm run check:editing # 无需 API / ffmpeg 的剪辑行为回归：字幕、模型输出、连续撤销
 npm run build
 npm run smoke     # 端到端冒烟：草稿 → 修订 → 变速 → 导出
 npm run fixtures  # 生成合成测试素材(尺寸/比例/停顿/无音轨等)
@@ -54,5 +55,4 @@ CI(`Release` 工作流)打云端全流程包,本机零负担:
 
 ## 验证
 
-推送和 PR 会自动跑 GitHub Actions(typecheck / build / smoke / mock UI E2E / 真实 LLM E2E),本机不承担测试负载。
-```
+推送和 PR 会自动跑 GitHub Actions(typecheck / build / smoke / mock UI E2E / 真实 LLM E2E)。`check:editing` 是轻量离线检查；构建、视频渲染和 GUI 验收优先在云端执行。

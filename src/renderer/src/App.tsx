@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ProjectRevision } from '../../domain/project'
 import { findFillerWords } from '../../domain/fillers'
+import { subtitleAtTime } from '../../domain/subtitles'
 import { timelineDurationSec, transitionDuration } from '../../domain/timeline'
 import type { ExportProgress, ExportResult, ImportResult, PimkoApi, ProjectSummary } from '../../shared/api'
 
@@ -210,6 +211,8 @@ export function App() {
       setRevision(next)
       setOutput(null)
       setPreviewMode('draft')
+      activeClipRef.current = 0
+      setLiveSubtitle('')
       pushAgent(next.agentNote ?? '已撤销上一步。')
     } catch (err) {
       setError(friendlyError(err))
@@ -222,6 +225,8 @@ export function App() {
     try {
       const next = await window.pimko.setBgmVolume(revision.project.id, gainDb)
       setRevision(next)
+      setOutput(null)
+      setPreviewMode('draft')
       pushAgent(next.agentNote ?? '配乐音量已调整。')
     } catch (err) {
       setError(friendlyError(err))
@@ -289,7 +294,9 @@ export function App() {
   }
 
   function entryForSourceTime(time: number): TimelineEntry | undefined {
-    return timelineEntries.find((entry) => {
+    const active = timelineEntries[activeClipRef.current]
+    const candidates = active ? [active, ...timelineEntries] : timelineEntries
+    return candidates.find((entry) => {
       const clip = clips[entry.clipIndex]!
       return time >= clip.sourceStartSec && time < clip.sourceEndSec
     })
@@ -319,10 +326,7 @@ export function App() {
       setLiveSubtitle('')
       return
     }
-    const cue = revision.project.timeline.subtitles.find(
-      (c) => Math.max(c.startSec, activeClip.sourceStartSec) < Math.min(c.endSec, activeClip.sourceEndSec),
-    )
-    setLiveSubtitle(cue?.text ?? '')
+    setLiveSubtitle(subtitleAtTime(revision.project.timeline.subtitles, time))
     if (seekingRef.current) return
     const clip = clips[activeClipRef.current]
     if (!clip) return
