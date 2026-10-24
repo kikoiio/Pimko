@@ -20,6 +20,44 @@ interface LlmPlan {
   reply: string
 }
 
+/** 从模型输出里取第一个完整的 JSON 对象：兼容 ```json 围栏、前后解释文字。 */
+function firstJsonObject(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index++) {
+    const char = text[index]!
+    if (inString) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+      continue
+    }
+    if (char === '"') inString = true
+    else if (char === '{') depth++
+    else if (char === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, index + 1)
+    }
+  }
+  return null
+}
+
+function parseLlmPlan(content: string): LlmPlan | null {
+  const candidates = [content, firstJsonObject(content)].filter((value): value is string => !!value)
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown
+      if (isLlmPlan(parsed)) return parsed
+    } catch {
+      // 继续尝试下一个候选
+    }
+  }
+  return null
+}
+
 const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不懂剪辑的用户。
 根据口播转写片段和用户反馈，决定保留哪些片段、如何微调边界、以及片段的播放速度。
 只返回 JSON，不要输出任何其他文字，格式：
@@ -121,7 +159,9 @@ export class OpenAiIntelligence implements EditingIntelligence {
       ],
     }
     // OpenRouter 的结构化输出按端点"尽力而为"；该参数只把请求路由到强制 schema 的端点。
-    if (baseUrl.includes('openrouter.ai')) body.require_parameters = true
+    // 部分免费模型不支持 response_format，命中时在下面自动降级。
+    const isOpenRouter = baseUrl.includes('openrouter.ai')
+    if (isOpenRouter) body.require_parameters = true
 
     // 最多 3 次尝试：偶发非法 JSON / 越界字段时重试，而不是静默降级。
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -134,17 +174,24 @@ export class OpenAiIntelligence implements EditingIntelligence {
         body: JSON.stringify(body),
       })
       if (!response.ok) {
-        throw new Error(`LLM 请求失败: ${response.status} ${await response.text()}`)
+        const detail = await response.text()
+        const unsupported =
+          isOpenRouter &&
+          (response.status === 400 || response.status === 404) &&
+          /response_format|structured|require_parameters|No endpoints found/i.test(detail)
+        if (unsupported && 'require_parameters' in body) {
+          // 该模型的端点不支持强制结构化输出：去掉参数，改用提示词约束 + 本地解析。
+          delete body.require_parameters
+          delete body.response_format
+          continue
+        }
+        throw new Error(`LLM 请求失败: ${response.status} ${detail}`)
       }
       const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
       const content = data.choices?.[0]?.message?.content
       if (!content) continue
-      try {
-        const parsed = JSON.parse(content) as unknown
-        if (isLlmPlan(parsed)) return parsed
-      } catch {
-        // 非法 JSON，进入下一次重试
-      }
+      const parsed = parseLlmPlan(content)
+      if (parsed) return parsed
     }
     return null
   }

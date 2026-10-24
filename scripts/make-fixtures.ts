@@ -35,13 +35,13 @@ interface FixtureSpec {
 }
 
 const SPEECH_PARTS: AudioPart[] = [
-  { kind: 'speech', text: 'Um hello and welcome to Pimko.' },
+  { kind: 'speech', text: 'Hello and welcome to Pimko.' },
   { kind: 'silence', durationSec: 1.2 },
-  { kind: 'speech', text: 'Uh this is a test of the editing agent.' },
+  { kind: 'speech', text: 'This is, um, a test of the editing agent.' },
   { kind: 'silence', durationSec: 0.9 },
-  { kind: 'speech', text: 'Today um we are going to talk about short videos.' },
+  { kind: 'speech', text: 'Today, uh, we are going to talk about short videos.' },
   { kind: 'silence', durationSec: 1.6 },
-  { kind: 'speech', text: 'Uh you can cut pauses and remove filler words.' },
+  { kind: 'speech', text: 'You can, um, cut pauses and remove filler words.' },
 ]
 
 const FIXTURES: FixtureSpec[] = [

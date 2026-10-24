@@ -34,10 +34,24 @@ async function main(): Promise<void> {
 
   try {
     const page = await app.firstWindow()
+    // 失败时把页面文本和控制台带进 artifact，避免只看到超时。
+    const consoleLines: string[] = []
+    page.on('console', (message) => consoleLines.push(`${message.type()}: ${message.text()}`))
+    page.on('pageerror', (error) => consoleLines.push(`pageerror: ${error.message}`))
     await page.getByRole('button', { name: '选择视频' }).click()
 
     const video = page.locator('video')
-    await video.waitFor({ state: 'visible', timeout: 180000 })
+    try {
+      await video.waitFor({ state: 'visible', timeout: 180000 })
+    } catch (error) {
+      const text = await page.evaluate(() => document.body.innerText).catch(() => '')
+      await writeFile(
+        path.join(tmpDir, 'pimko-e2e-error.txt'),
+        `页面文本：\n${text}\n\n控制台：\n${consoleLines.join('\n')}\n`,
+      )
+      await page.screenshot({ path: path.join(tmpDir, 'pimko-e2e-failure.png') }).catch(() => {})
+      throw error
+    }
     await page.waitForFunction(
       () => {
         const el = document.querySelector('video')

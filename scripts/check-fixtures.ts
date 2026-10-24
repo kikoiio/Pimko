@@ -139,7 +139,9 @@ async function checkFixture(spec: FixtureSpec, fixtureDir: string, workRoot: str
 }
 
 /** 真实转写检查：断言有词级时间戳；中文素材还要能识别出中文。 */
-async function checkTranscription(files: Array<{ name: string; file: string; expectCjk?: boolean }>): Promise<void> {
+async function checkTranscription(
+  files: Array<{ name: string; file: string; expectCjk?: boolean; minFillers?: number }>,
+): Promise<void> {
   await loadDotEnv()
   const config = loadLlmConfig()
   if (config.provider === 'mock') {
@@ -158,6 +160,9 @@ async function checkTranscription(files: Array<{ name: string; file: string; exp
     const text = transcript.segments.map((segment) => segment.text).join(' ')
     if (entry.expectCjk && !/[一-鿿]/.test(text)) {
       throw new Error(`${entry.name}: 期望识别出中文，实际「${text.slice(0, 60)}」`)
+    }
+    if (entry.minFillers !== undefined && fillers.length < entry.minFillers) {
+      throw new Error(`${entry.name}: 期望至少 ${entry.minFillers} 处口癖，实际 ${fillers.length}`)
     }
     console.log(
       `ok transcribe ${entry.name}: ${transcript.segments.length} 段 / ${words} 词, 口癖 ${fillers.length}` +
@@ -180,7 +185,7 @@ async function main(): Promise<void> {
     }
 
     if (withTranscribe) {
-      const files = [{ name: 'talking-head-en', file: path.join(fixtureDir, 'talking-head-en.mp4') }]
+      const files = [{ name: 'talking-head-en', file: path.join(fixtureDir, 'talking-head-en.mp4'), minFillers: 1 }]
       const zhSample = path.join(root, 'sample-assets', 'public', 'zh-speaking-portrait.mp4')
       try {
         await readFile(zhSample)

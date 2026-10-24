@@ -105,19 +105,28 @@ async function download(url: string, dest: string): Promise<number> {
   return buffer.length
 }
 
-async function probe(file: string): Promise<{ width?: number; height?: number; durationSec: number }> {
+interface ProbeResult {
+  width?: number
+  height?: number
+  durationSec: number
+  audioDurationSec: number
+}
+
+async function probe(file: string): Promise<ProbeResult> {
   const { stdout } = await execFileAsync(resolveFfprobe(), [
     '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', file,
   ])
   const parsed = JSON.parse(stdout) as {
     format?: { duration?: string }
-    streams?: { codec_type?: string; width?: number; height?: number }[]
+    streams?: { codec_type?: string; width?: number; height?: number; duration?: string }[]
   }
   const video = parsed.streams?.find((stream) => stream.codec_type === 'video')
+  const audio = parsed.streams?.find((stream) => stream.codec_type === 'audio')
   return {
     width: video?.width,
     height: video?.height,
     durationSec: Number(parsed.format?.duration ?? 0),
+    audioDurationSec: Number(audio?.duration ?? parsed.format?.duration ?? 0),
   }
 }
 
@@ -130,10 +139,21 @@ async function buildSample(spec: SampleSpec, workDir: string, outDir: string): P
 
   if (spec.muxSize) {
     const duration = Math.min(spec.trimSec ?? source.durationSec, source.durationSec)
+    // 部分公开素材（如分链 Ogg）的时间戳有断点，直接对源文件用 -t 截断会让音轨
+    // 只剩开头一两秒。先完整解码成连续时间戳的 WAV，再截取、合流。
+    const normalized = path.join(workDir, `${spec.id}.wav`)
+    await execFileAsync(resolveFfmpeg(), [
+      '-y', '-v', 'error', '-i', cachePath, '-vn',
+      '-ac', '1', '-ar', '16000', '-c:a', 'pcm_s16le', normalized,
+    ])
+    const usable = await probe(normalized)
+    if (!(usable.durationSec > duration - 1)) {
+      throw new Error(`${spec.id}: 音频解码不完整 ${usable.durationSec.toFixed(1)}s，期望至少 ${duration.toFixed(1)}s`)
+    }
     await execFileAsync(resolveFfmpeg(), [
       '-y', '-v', 'error',
       '-f', 'lavfi', '-i', `testsrc2=size=${spec.muxSize}:rate=30:duration=${duration}`,
-      '-i', cachePath,
+      '-i', normalized,
       '-map', '0:v', '-map', '1:a',
       '-t', String(duration),
       '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast',
@@ -153,6 +173,11 @@ async function buildSample(spec: SampleSpec, workDir: string, outDir: string): P
     throw new Error(`${spec.id}: 期望 ${spec.expectWidth}x${spec.expectHeight}，实际 ${final.width}x${final.height}`)
   }
   if (!(final.durationSec > 0.5)) throw new Error(`${spec.id}: 时长异常 ${final.durationSec}`)
+  if (spec.muxSize && !(final.audioDurationSec > final.durationSec - 1.5)) {
+    throw new Error(
+      `${spec.id}: 音轨只有 ${final.audioDurationSec.toFixed(1)}s，视频 ${final.durationSec.toFixed(1)}s，疑似素材被截断`,
+    )
+  }
   const hash = createHash('sha256').update(await readFile(outputPath)).digest('hex')
   console.log(`  ok ${final.width}x${final.height} ${final.durationSec.toFixed(1)}s sha256=${hash.slice(0, 12)}`)
 
@@ -170,7 +195,11 @@ async function main(): Promise<void> {
   const cacheDir = path.join(outDir, '.cache')
   await mkdir(cacheDir, { recursive: true })
   const force = process.argv.includes('--force')
-  const specs = SAMPLES as SampleSpecWithProbe[]
+  const onlyIndex = process.argv.indexOf('--only')
+  const only = onlyIndex >= 0 ? (process.argv[onlyIndex + 1] ?? '').split(',').filter(Boolean) : undefined
+  const all = SAMPLES as SampleSpecWithProbe[]
+  const specs = only ? all.filter((spec) => only.includes(spec.id)) : all
+  if (specs.length === 0) throw new Error(`未找到匹配的样例: ${only?.join(',') ?? '全部为空'}`)
   for (const spec of specs) {
     const outputPath = path.join(outDir, spec.outputName)
     if (!force && (await exists(outputPath))) {
@@ -182,9 +211,20 @@ async function main(): Promise<void> {
     console.log(`fetch ${spec.id}: ${spec.url}`)
     await buildSample(spec, cacheDir, outDir)
   }
+  const manifestPath = path.join(outDir, 'manifest.json')
+  let previous: SampleSpecWithProbe[] = []
+  try {
+    previous = (JSON.parse(await readFile(manifestPath, 'utf8')) as { samples?: SampleSpecWithProbe[] }).samples ?? []
+  } catch {
+    // 首次运行没有旧清单。
+  }
+  const merged = all.map((spec) => {
+    const old = previous.find((entry) => entry.id === spec.id)
+    return { ...spec, hash: spec.hash ?? old?.hash, durationSec: spec.durationSec ?? old?.durationSec }
+  })
   await writeFile(
-    path.join(outDir, 'manifest.json'),
-    `${JSON.stringify({ fetchedAt: new Date().toISOString(), samples: specs }, null, 2)}\n`,
+    manifestPath,
+    `${JSON.stringify({ fetchedAt: new Date().toISOString(), samples: merged }, null, 2)}\n`,
   )
   console.log(`samples ready in ${outDir}`)
 }

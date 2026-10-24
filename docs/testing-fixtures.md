@@ -14,6 +14,10 @@ npm run check:fixtures  # 跑管线断言:探测→静音分析→建稿→导�
 npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Groq Key)
 ```
 
+`check:fixtures` 的 `--only a,b` 可只跑指定素材;`--transcribe` 会检查词级时间戳、英文素材的
+口癖检出,中文素材还要求识别出汉字。`samples` 同样支持 `--only`(按 id,见下表之外的
+`manifest.json`),便于只刷新单个来源。
+
 `check:fixtures` 的 `--only a,b` 可只跑指定素材;`--transcribe` 会检查词级时间戳,中文素材还要求识别出汉字。
 
 ## 合成测试集
@@ -22,7 +26,7 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 
 | 素材 | 规格 | 覆盖点 |
 |------|------|--------|
-| `talking-head-en.mp4` | 640×360@30, 14s | 口播基线:含 um/uh 口癖 + 1.2/0.9/1.6s 停顿 |
+| `talking-head-en.mp4` | 640×360@30, 15.6s | 口播基线:句中 um/uh 口癖(真实转写可检出) + 1.2/0.9/1.6s 停顿 |
 | `portrait-en.mp4` | 720×1280@30, 14s | 竖屏比例,导出不得变形 |
 | `odd-dims-en.mkv` | 641×361@25, FFV1/yuv444p | 奇数尺寸 → 导出取偶(642×362) |
 | `long-pauses.mp4` | 960×540@30, 13s | 2.5/3/2.5s 长停顿 → 压缩提案 |
@@ -46,5 +50,6 @@ npm run check:fixtures -- --transcribe   # 额外走真实转写(需 .env 配 Gr
 注意:
 
 - `zh-speaking-portrait.mp4` 与 `en-speaking.mp4` 是**公开音频 + 合成测试画面**合流,不是原始视频画面;转写与剪辑逻辑测试有效,画面美观度测试请用原片。
+- 中文演讲的源 Ogg 是分链文件,时间戳有断点:直接 `-t` 截取会让音轨只剩开头一两秒。`fetch-samples` 先完整解码为连续时间戳的 WAV 再截取,并校验成片音轨时长,避免「视频 45s、音频 1.7s」的坏素材。
 - CC BY / CC BY-SA 素材再分发时需保留署名与许可;这些文件只用于本地/CI 测试,不入库、不随产品分发。
-- 下载走 HTTPS 且校验最终尺寸/时长;失败会直接报错,不会静默生成坏文件。
+- 下载走 HTTPS 且校验最终尺寸/时长/哈希;失败会直接报错,不会静默生成坏文件。
