@@ -38,6 +38,13 @@ async function main(): Promise<void> {
 
     const video = page.locator('video')
     await video.waitFor({ state: 'visible', timeout: 30000 })
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('video')
+        return !!el && el.readyState >= 2 && el.videoWidth > 0 && el.videoHeight > 0
+      },
+      { timeout: 30000 },
+    )
     const status = await video.evaluate((el) => {
       const v = el as HTMLVideoElement
       return {
