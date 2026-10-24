@@ -60,7 +60,7 @@ npm run check:boundaries -- --render        # 加实际渲染
 它只用合成数据、无模型凭证，按单 worker 生成并提供 7 天有效的 `pimko-boundary-corpus` 测试附件；不创建 Release。
 附件中的故意损坏文件只应交给视频导入或探测器，不执行。PR 检查包含两个扩展文件；手动触发时可选择是否开启扩展项。
 
-生成器尚未运行时不能把素材清单说成“文件已准备好”；以本次 CI 附件及 `check-results.json` 为准。
+本轮已在云端生成完整 25 个边界文件和 7 个配乐文件并下载至上述目录，32 项检查通过。执行证据及未覆盖范围见 [测试覆盖与待验收项](testing-coverage.md)。未来重新生成时，仍以对应 CI 附件及 `check-results.json` 为准。
 
 ## 公开素材
 
