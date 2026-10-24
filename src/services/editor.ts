@@ -58,6 +58,9 @@ export class Editor {
     const current = await this.deps.store.latest(projectId)
     if (!current) throw new Error(`项目不存在: ${projectId}`)
     const plan = await this.deps.intelligence.reviseTimeline(current.project, feedback)
+    if (plan.timeline.clips.length === 0) {
+      throw new Error('这次修改会让成片变空，已保留上一版。')
+    }
     const revision: ProjectRevision = {
       id: randomUUID(),
       project: { ...current.project, timeline: plan.timeline },
@@ -81,6 +84,9 @@ export class Editor {
   ): Promise<string> {
     const current = await this.deps.store.latest(projectId)
     if (!current) throw new Error(`项目不存在: ${projectId}`)
+    if (current.project.timeline.clips.length === 0) {
+      throw new Error('时间线没有任何片段，无法导出。')
+    }
     const result = await this.deps.renderer.render(current.project, outputPath, onProgress)
     return result.outputPath
   }

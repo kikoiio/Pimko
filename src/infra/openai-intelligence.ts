@@ -35,7 +35,7 @@ export class OpenAiIntelligence implements EditingIntelligence {
   }
 
   async reviseTimeline(project: Project, feedback: Feedback): Promise<EditPlan> {
-    const transcript = this.reconstructTranscript(project)
+    const transcript = project.transcript ?? this.reconstructTranscript(project)
     const current = project.timeline.clips
       .map((clip, index) => `第${index + 1}段: ${clip.sourceStartSec.toFixed(2)}-${clip.sourceEndSec.toFixed(2)}`)
       .join('\\n')
@@ -101,9 +101,17 @@ export class OpenAiIntelligence implements EditingIntelligence {
     if (clips.length === 0) return this.fullTimeline(transcript)
     return {
       clips,
-      subtitles: transcript.segments
-        .filter((segment) => clips.some((clip) => clip.sourceStartSec <= segment.startSec && clip.sourceEndSec >= segment.endSec))
-        .map((segment) => ({ startSec: segment.startSec, endSec: segment.endSec, text: segment.text })),
+        subtitles: transcript.segments.flatMap((segment) => {
+          const clip = clips.find(
+            (candidate) => Math.max(segment.startSec, candidate.sourceStartSec) < Math.min(segment.endSec, candidate.sourceEndSec),
+          )
+          if (!clip) return []
+          return [{
+            startSec: Math.max(segment.startSec, clip.sourceStartSec),
+            endSec: Math.min(segment.endSec, clip.sourceEndSec),
+            text: segment.text,
+          }]
+        }),
       transitions: clips.slice(1).map(() => ({ type: 'cut' as const })),
     }
   }

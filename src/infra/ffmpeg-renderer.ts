@@ -15,6 +15,9 @@ export class FfmpegRenderer implements Renderer {
     onProgress?: (progress: ExportProgress) => void,
   ): Promise<RenderResult> {
     const assetById = new Map(project.assets.map((asset) => [asset.id, asset]))
+    if (project.timeline.clips.length === 0) {
+      throw new Error('时间线没有任何片段，无法导出。')
+    }
     const workDir = await mkdtemp(path.join(tmpdir(), 'pimko-render-'))
     try {
       const assPath = path.join(workDir, 'subtitles.ass')
