@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import type { MediaAsset } from '../domain/media'
 import type { SilenceInterval } from '../domain/analysis'
 import type { SilenceAnalyzer } from '../ports/analyzer'
+import { resolveFfmpeg } from './ffmpeg-bin'
 
 const execFileAsync = promisify(execFile)
 
@@ -23,7 +24,7 @@ export class FfmpegSilenceAnalyzer implements SilenceAnalyzer {
 
   async analyze(asset: MediaAsset): Promise<SilenceInterval[]> {
     // silencedetect 的结果只打在 stderr；-vn 避免解码视频。
-    const { stderr } = await execFileAsync('ffmpeg', [
+    const { stderr } = await execFileAsync(resolveFfmpeg(), [
       '-hide_banner', '-nostats', '-v', 'info',
       '-i', asset.absolutePath,
       '-vn',

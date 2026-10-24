@@ -1,0 +1,23 @@
+appId: io.github.kikoiio.pimko
+productName: Pimko
+directories:
+  output: release
+# electron-vite 已把 main/preload/renderer 全部打进 out/,无需携带 node_modules。
+files:
+  - out/**
+extraResources:
+  - from: resources/bin
+    to: bin
+linux:
+  target:
+    - AppImage
+    - deb
+  category: AudioVideo
+  artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+win:
+  target:
+    - nsis
+  artifactName: ${ProductName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -7,6 +7,7 @@ import type { MediaAsset } from '../domain/media'
 import type { Transcript } from '../domain/transcript'
 import type { Transcriber } from '../ports/transcriber'
 import type { LlmConfig } from './llm-config'
+import { resolveFfmpeg } from './ffmpeg-bin'
 
 const execFileAsync = promisify(execFile)
 
@@ -28,7 +29,7 @@ export class OpenRouterTranscriber implements Transcriber {
     try {
       const audioPath = path.join(workDir, 'audio.mp3')
       try {
-        await execFileAsync('ffmpeg', [
+        await execFileAsync(resolveFfmpeg(), [
           '-y', '-v', 'error', '-i', asset.absolutePath, '-vn', '-ac', '1', '-ar', '16000', audioPath,
         ])
       } catch (err) {

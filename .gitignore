@@ -5,3 +5,7 @@ sample-assets/
 .env
 .tmp/
 .DS_Store
+
+# packaging
+resources/bin/
+release/

@@ -3,6 +3,7 @@ import { promisify } from 'node:util'
 import { randomUUID } from 'node:crypto'
 import type { MediaAsset } from '../domain/media'
 import type { Prober } from '../ports/prober'
+import { resolveFfprobe } from './ffmpeg-bin'
 
 const execFileAsync = promisify(execFile)
 
@@ -19,7 +20,7 @@ interface FfprobeOutput {
 
 export class FfmpegProber implements Prober {
   async probe(absolutePath: string): Promise<MediaAsset> {
-    const { stdout } = await execFileAsync('ffprobe', [
+    const { stdout } = await execFileAsync(resolveFfprobe(), [
       '-v', 'error',
       '-print_format', 'json',
       '-show_format',

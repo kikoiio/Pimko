@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { Project } from '../domain/project'
 import { timelineDurationSec, transitionDuration, type Timeline, type Transition } from '../domain/timeline'
 import type { ExportProgress, RenderResult, Renderer } from '../ports/renderer'
+import { resolveFfmpeg, resolveFfprobe } from './ffmpeg-bin'
 
 const execFileAsync = promisify(execFile)
 
@@ -48,7 +49,7 @@ export class FfmpegRenderer implements Renderer {
         // atempo 变速不变调；0.5–2.0 内音质最稳，超出范围由上游 clamp 保证。
         if (speed !== 1) args.push('-af', `atempo=${speed}`)
         args.push(clipPath)
-        await execFileAsync('ffmpeg', args)
+        await execFileAsync(resolveFfmpeg(), args)
         clipFiles.push(clipPath)
         onProgress?.({ phase: 'cutting', current: index + 1, total: project.timeline.clips.length })
       }
@@ -63,7 +64,7 @@ export class FfmpegRenderer implements Renderer {
         await this.renderWithTransitions(project, clipFiles, assPath, outputPath)
       } else {
         const silentPath = path.join(workDir, 'silent.mp4')
-        await execFileAsync('ffmpeg', [
+        await execFileAsync(resolveFfmpeg(), [
           '-y', '-v', 'error',
           '-f', 'concat', '-safe', '0',
           '-i', listPath,
@@ -73,7 +74,7 @@ export class FfmpegRenderer implements Renderer {
         onProgress?.({ phase: 'concatenating', current: 1, total: 1 })
 
         if (project.timeline.bgm) {
-          await execFileAsync('ffmpeg', [
+          await execFileAsync(resolveFfmpeg(), [
             '-y', '-v', 'error',
             '-i', silentPath,
             '-stream_loop', '-1', '-i', project.timeline.bgm.path,
@@ -85,7 +86,7 @@ export class FfmpegRenderer implements Renderer {
             outputPath,
           ])
         } else {
-          await execFileAsync('ffmpeg', [
+          await execFileAsync(resolveFfmpeg(), [
             '-y', '-v', 'error',
             '-i', silentPath,
             '-vf', `subtitles=${assPath}`,
@@ -97,7 +98,7 @@ export class FfmpegRenderer implements Renderer {
       onProgress?.({ phase: 'finalizing', current: 1, total: 1 })
       // 渲染后自检：时长/分辨率与时间线核对,不把坏成片交给用户。
       onProgress?.({ phase: 'verifying', current: 1, total: 1 })
-      const { stdout } = await execFileAsync('ffprobe', [
+      const { stdout } = await execFileAsync(resolveFfprobe(), [
         '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', outputPath,
       ])
       const probe = JSON.parse(stdout) as {
@@ -173,7 +174,7 @@ export class FfmpegRenderer implements Renderer {
       '-c:a', 'aac', '-ar', '48000', '-ac', '2',
       outputPath,
     )
-    await execFileAsync('ffmpeg', args)
+    await execFileAsync(resolveFfmpeg(), args)
   }
 }
 

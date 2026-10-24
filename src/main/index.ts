@@ -17,6 +17,7 @@ import type { LlmConfig } from '../infra/llm-config'
 import type { ExportProgress } from '../ports/renderer'
 import { timelineDurationSec } from '../domain/timeline'
 import type { ProjectSummary } from '../shared/api'
+import { resolveFfmpeg } from '../infra/ffmpeg-bin'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
@@ -159,7 +160,7 @@ function registerIpc(): void {
         await readFile(cachePath)
       } catch {
         const mid = clip.sourceStartSec + (clip.sourceEndSec - clip.sourceStartSec) / 2
-        await execFileAsync('ffmpeg', [
+        await execFileAsync(resolveFfmpeg(), [
           '-y', '-v', 'error',
           '-ss', String(Math.max(0, mid)),
           '-i', asset.absolutePath,

@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux
+          - os: windows-2025
+            target: win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ''
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Package (${{ matrix.target }})
+        run: npm run dist:${{ matrix.target }}
+      - name: Smoke packaged app (linux only)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2t64
+          ls -la release/
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pimko-${{ matrix.target }}-${{ github.sha }}
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/*.exe
+          if-no-files-found: error
