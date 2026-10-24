@@ -60,6 +60,25 @@ async function main(): Promise<void> {
       throw new Error(`输出分辨率错误: ${outVideo?.width}x${outVideo?.height}`)
     }
     console.log(`export ok: ${outputPath} (${duration.toFixed(2)}s)`)
+
+    // 变速链路：第一段 2 倍速后，导出时长应 ≈ Σ(片段时长/速度)。
+    const spedUp = await editor.revise(revised.project.id, { text: '第一段 2 倍速' })
+    const spedClip = spedUp.project.timeline.clips[0]!
+    if (spedClip.speed !== 2) throw new Error(`变速未生效: speed=${String(spedClip.speed)}`)
+    const speedOutput = path.join(workDir, 'output-speed.mp4')
+    await editor.export(spedUp.project.id, speedOutput)
+    const expected = spedUp.project.timeline.clips.reduce(
+      (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
+      0,
+    )
+    const { stdout: speedOut } = await execFileAsync('ffprobe', [
+      '-v', 'error', '-print_format', 'json', '-show_format', speedOutput,
+    ])
+    const speedDuration = Number((JSON.parse(speedOut) as { format?: { duration?: string } }).format?.duration)
+    if (!Number.isFinite(speedDuration) || Math.abs(speedDuration - expected) > 0.6) {
+      throw new Error(`变速导出时长不符: expected=${expected.toFixed(2)}s got=${speedDuration.toFixed(2)}s`)
+    }
+    console.log(`speed export ok: ${speedDuration.toFixed(2)}s (expected ${expected.toFixed(2)}s)`)
   } finally {
     await rm(workDir, { recursive: true, force: true })
   }

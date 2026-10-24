@@ -42,9 +42,21 @@ export class MockIntelligence implements EditingIntelligence {
         }
       }
     }
+    const speedMatch = feedback.text.match(/(\d+(?:\.\d+)?)\s*倍速/)
+    if (speedMatch && timeline.clips.length > 0) {
+      // mock 演示：把第一段设为指定倍速（0.5–2.0），驱动冒烟/E2E 验证变速链路。
+      const speed = Math.min(2, Math.max(0.5, Number(speedMatch[1])))
+      const first = timeline.clips[0]!
+      const clips = timeline.clips.slice()
+      clips[0] = { ...first, ...(speed !== 1 ? { speed } : {}) }
+      return {
+        timeline: { ...timeline, clips },
+        note: `已把第 1 段设为 ${speed} 倍速（mock 演示逻辑）。`,
+      }
+    }
     return {
       timeline: structuredClone(timeline),
-      note: 'mock 模式只演示“开头太拖”这一种反馈，其他反馈暂不改动时间线。',
+      note: 'mock 模式只演示“开头太拖”和“N 倍速”这两种反馈，其他反馈暂不改动时间线。',
     }
   }
 }

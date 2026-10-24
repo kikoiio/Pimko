@@ -8,6 +8,7 @@ interface LlmClip {
   segmentIndex: number
   startSec: number
   endSec: number
+  speed?: number
 }
 
 interface LlmPlan {
@@ -16,14 +17,15 @@ interface LlmPlan {
 }
 
 const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不懂剪辑的用户。
-根据口播转写片段和用户反馈，决定保留哪些片段、如何微调边界。
+根据口播转写片段和用户反馈，决定保留哪些片段、如何微调边界、以及片段的播放速度。
 只返回 JSON，不要输出任何其他文字，格式：
-{"clips":[{"segmentIndex":0,"startSec":0.0,"endSec":4.2}],"reply":"给用户的一句中文说明"}
+{"clips":[{"segmentIndex":0,"startSec":0.0,"endSec":4.2,"speed":1.5}],"reply":"给用户的一句中文说明"}
 规则：
-- clips 按播放顺序排列，只使用给出的 segmentIndex；
+- clips 按播放顺序排列，只使用给出的 segmentIndex，可重排；
 - startSec/endSec 必须落在对应转写片段时间内，可微调边界但不能跨越相邻片段；
-- 用户要求更紧凑时，优先删除口癖、重复、停顿，而不是加速；
-- reply 用一句中文说明你做了什么。`
+- speed 可选，范围 0.5–2.0，缺省或 1 为原速；用户嫌某段啰嗦但内容要保留时，优先设 1.2–1.5 倍速而不是删除；
+- 用户要求更紧凑时，优先删除口癖、重复、停顿，其次适度变速；
+- reply 用一句中文说明你做了什么，有变速时说明哪段变速多少。`
 
 export class OpenAiIntelligence implements EditingIntelligence {
   constructor(private readonly config: LlmConfig) {}
@@ -111,7 +113,13 @@ export class OpenAiIntelligence implements EditingIntelligence {
       const start = clamp(llmClip.startSec, segment.startSec, segment.endSec)
       const end = clamp(llmClip.endSec, segment.startSec, segment.endSec)
       if (end - start < 0.2) continue
-      clips.push({ assetId, sourceStartSec: start, sourceEndSec: end })
+      const speed = llmClip.speed !== undefined ? clamp(llmClip.speed, 0.5, 2) : 1
+      clips.push({
+        assetId,
+        sourceStartSec: start,
+        sourceEndSec: end,
+        ...(speed !== 1 ? { speed } : {}),
+      })
     }
     if (clips.length === 0) return this.fullTimeline(transcript)
     return {
@@ -167,10 +175,13 @@ function isLlmPlan(value: unknown): value is LlmPlan {
   if (!Array.isArray(clips)) return false
   for (const clip of clips) {
     if (typeof clip !== 'object' || clip === null) return false
-    const { segmentIndex, startSec, endSec } = clip as Record<string, unknown>
+    const { segmentIndex, startSec, endSec, speed } = clip as Record<string, unknown>
     if (typeof segmentIndex !== 'number' || !Number.isInteger(segmentIndex) || segmentIndex < 0) return false
     if (typeof startSec !== 'number' || typeof endSec !== 'number') return false
     if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || endSec <= startSec) return false
+    if (speed !== undefined) {
+      if (typeof speed !== 'number' || !Number.isFinite(speed) || speed < 0.25 || speed > 4) return false
+    }
   }
   if (reply !== undefined && typeof reply !== 'string') return false
   return true

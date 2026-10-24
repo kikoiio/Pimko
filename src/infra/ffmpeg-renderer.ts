@@ -28,17 +28,26 @@ export class FfmpegRenderer implements Renderer {
       for (const [index, clip] of project.timeline.clips.entries()) {
         const asset = assetById.get(clip.assetId)
         if (!asset) throw new Error(`时间线引用了不存在的素材: ${clip.assetId}`)
+        const speed = clip.speed !== undefined && clip.speed >= 0.5 && clip.speed <= 4 ? clip.speed : 1
         const clipPath = path.join(workDir, `clip-${String(index).padStart(4, '0')}.mp4`)
-        await execFileAsync('ffmpeg', [
+        const videoFilters = [
+          `scale=${project.settings.width}:${project.settings.height}:force_original_aspect_ratio=decrease`,
+          `pad=${project.settings.width}:${project.settings.height}:(ow-iw)/2:(oh-ih)/2`,
+        ]
+        if (speed !== 1) videoFilters.push(`setpts=PTS/${speed}`)
+        const args = [
           '-y', '-v', 'error',
           '-ss', String(clip.sourceStartSec),
           '-to', String(clip.sourceEndSec),
           '-i', asset.absolutePath,
-          '-vf', `scale=${project.settings.width}:${project.settings.height}:force_original_aspect_ratio=decrease,pad=${project.settings.width}:${project.settings.height}:(ow-iw)/2:(oh-ih)/2`,
+          '-vf', videoFilters.join(','),
           '-r', String(project.settings.fps),
           '-c:a', 'aac', '-ar', '48000', '-ac', '2',
-          clipPath,
-        ])
+        ]
+        // atempo 变速不变调；0.5–2.0 内音质最稳，超出范围由上游 clamp 保证。
+        if (speed !== 1) args.push('-af', `atempo=${speed}`)
+        args.push(clipPath)
+        await execFileAsync('ffmpeg', args)
         clipFiles.push(clipPath)
         onProgress?.({ phase: 'cutting', current: index + 1, total: project.timeline.clips.length })
       }
@@ -56,7 +65,7 @@ export class FfmpegRenderer implements Renderer {
       onProgress?.({ phase: 'concatenating', current: 1, total: 1 })
 
       const durationSec = project.timeline.clips.reduce(
-        (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec),
+        (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
         0,
       )
       if (project.timeline.bgm) {
@@ -104,16 +113,18 @@ function buildAss(project: Project): string {
   ].join('\n')
 
     // 字幕与 clip 部分重叠时裁剪到 clip 内，避免 LLM 微调边界后整句丢失。
+  // 变速片段内字幕时间同样除以 speed，与播放节奏一致。
   const events: string[] = []
   let outputStart = 0
   for (const clip of project.timeline.clips) {
-    const length = clip.sourceEndSec - clip.sourceStartSec
+    const speed = clip.speed ?? 1
+    const length = (clip.sourceEndSec - clip.sourceStartSec) / speed
     for (const cue of project.timeline.subtitles) {
         const overlapStart = Math.max(cue.startSec, clip.sourceStartSec)
         const overlapEnd = Math.min(cue.endSec, clip.sourceEndSec)
         if (overlapStart < overlapEnd) {
         events.push(
-              `Dialogue: 0,${toAssTime(outputStart + overlapStart - clip.sourceStartSec)},${toAssTime(outputStart + overlapEnd - clip.sourceStartSec)},Default,,0,0,0,,${cue.text}`,
+              `Dialogue: 0,${toAssTime(outputStart + (overlapStart - clip.sourceStartSec) / speed)},${toAssTime(outputStart + (overlapEnd - clip.sourceStartSec) / speed)},Default,,0,0,0,,${cue.text}`,
         )
       }
     }

@@ -25,7 +25,7 @@ function nextMessageId(): string {
 
 function totalDuration(revision: ProjectRevision): number {
   return revision.project.timeline.clips.reduce(
-    (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec),
+    (sum, clip) => sum + (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1),
     0,
   )
 }
@@ -43,7 +43,7 @@ interface TimelineEntry {
 function buildTimeline(revision: ProjectRevision): TimelineEntry[] {
   let outputStart = 0
   return revision.project.timeline.clips.map((clip, clipIndex) => {
-    const length = Math.max(0, clip.sourceEndSec - clip.sourceStartSec)
+    const length = Math.max(0, (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1))
     const entry = { clipIndex, outputStart, outputEnd: outputStart + length }
     outputStart += length
     return entry
@@ -217,6 +217,7 @@ export function App() {
     if (!clip || !videoRef.current) return
     activeClipRef.current = index
     videoRef.current.currentTime = clip.sourceStartSec
+    videoRef.current.playbackRate = clip.speed ?? 1
     void videoRef.current.play()
   }
 
@@ -231,7 +232,11 @@ export function App() {
     seekingRef.current = false
     if (!videoRef.current || previewMode !== 'draft') return
     const entry = entryForSourceTime(videoRef.current.currentTime)
-    if (entry) activeClipRef.current = entry.clipIndex
+    if (entry) {
+      activeClipRef.current = entry.clipIndex
+      const clip = clips[entry.clipIndex]
+      if (clip) videoRef.current.playbackRate = clip.speed ?? 1
+    }
   }
 
   function handleTimeUpdate(): void {
@@ -434,7 +439,11 @@ export function App() {
                 <span className="clip-time">
                   {clip.sourceStartSec.toFixed(1)}–{clip.sourceEndSec.toFixed(1)}s
                 </span>
-                <span className="clip-length">{length.toFixed(1)}s</span>
+                <span className="clip-length">
+                  {clip.speed && clip.speed !== 1
+                    ? `${(length / clip.speed).toFixed(1)}s @ ${clip.speed}x`
+                    : `${length.toFixed(1)}s`}
+                </span>
               </button>
             )
           })}
