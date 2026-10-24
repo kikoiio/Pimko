@@ -2,7 +2,7 @@
 
 对话式短视频剪辑 agent。第一用户是不懂剪辑的创作者：导入口播素材，用自然语言反馈，得到可直接发布的成片。
 
-当前状态：已实现词级转写、停顿分析、口癖检测、按段变速、撤销、配乐、叠化导出及本地 MCP。当前开发重点是连续修改后的字幕、配乐和历史一致性；真实模型完整验收仍受免费服务限流影响。领域模型与 ports 见 `docs/architecture.md`，需求与里程碑见 `docs/requirements.md`，先行调研见 `docs/research/`。
+当前状态：已实现词级转写、停顿分析、口癖检测、按段变速、撤销、配乐、叠化导出及本地 MCP。功能开发目前暂停，等待用户体验后确定方向；真实模型完整验收仍受免费服务限流影响。领域模型与 ports 见 `docs/architecture.md`，需求与里程碑见 `docs/requirements.md`，先行调研见 `docs/research/`。当前能力的人工验收路线见 [docs/testing-acceptance.md](docs/testing-acceptance.md)，测试执行证据与未覆盖范围见 [docs/testing-coverage.md](docs/testing-coverage.md)。
 
 ## 开发
 
@@ -41,7 +41,7 @@ ffmpeg -f lavfi -i "flite=text=Hello and welcome to Pimko. This is a test talkin
 
 复制 `.env.example` 为 `.env` 并填入 API Key。当前管线默认 `mock`，接入真实模型时把 `PIMKO_LLM_PROVIDER` 切到 `openai` 或 `anthropic`；`.env` 不会提交。
 
-产品需求、验收标准和路线图见 [docs/requirements.md](docs/requirements.md)；测试素材清单与许可证见 [docs/testing-fixtures.md](docs/testing-fixtures.md)。
+产品需求、验收标准和路线图见 [docs/requirements.md](docs/requirements.md)；测试素材清单与许可证见 [docs/testing-fixtures.md](docs/testing-fixtures.md)；人工验收步骤见 [docs/testing-acceptance.md](docs/testing-acceptance.md)。
 
 ## 打包分发(Linux + Windows)
 
