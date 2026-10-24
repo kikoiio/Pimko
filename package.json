@@ -9,6 +9,7 @@
     "build": "electron-vite build",
     "typecheck": "tsc --noEmit",
     "smoke": "tsx scripts/smoke.ts",
+    "test:ui": "tsx scripts/e2e-ui.ts",
     "start": "electron-vite preview"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
     "electron": "^33.2.0",
     "electron-vite": "^2.3.0",
     "ffmpeg-static": "^5.2.0",
+    "playwright": "^1.49.1",
     "tsx": "^4.23.15",
     "typescript": "^5.7.2",
     "vite": "^5.4.11"

@@ -16,13 +16,22 @@ const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
 
 let editor: Editor
 
+// 必须在 app ready 前注册：stream 让 <video> 支持 Range 请求，否则只能拿到无法播放的整段响应。
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'pimko-media',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+  },
+])
+
 function mediaUrl(fileUrl: string): string {
-  return `pimko-media://${encodeURIComponent(fileURLToPath(fileUrl))}`
+  // 文件路径放 pathname：host 会被 URL 解析器小写化，Linux 路径大小写敏感。
+  return `pimko-media://media/${encodeURIComponent(fileURLToPath(fileUrl))}`
 }
 
 function registerMediaProtocol(): void {
   protocol.handle('pimko-media', (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).host)
+    const filePath = decodeURIComponent(new URL(request.url).pathname.slice(1))
     return net.fetch(pathToFileURL(filePath).href)
   })
 }

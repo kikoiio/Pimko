@@ -24,3 +24,59 @@ jobs:
       - run: npm run build
       - name: Smoke (create draft → revise → export)
         run: npm run smoke
+
+  ui:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install system deps
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          ffmpeg xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2
+          libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2
+          libgbm1 libasound2t64 libpango-1.0-0 libcairo2
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ''
+      - run: npm run typecheck
+      - run: npm run build
+      - name: UI E2E (mock pipeline)
+        run: xvfb-run -a npm run test:ui
+
+  e2e-openai:
+    runs-on: ubuntu-24.04
+    needs: ui
+    if: ${{ secrets.PIMKO_LLM_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install system deps
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          ffmpeg espeak-ng xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2
+          libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2
+          libgbm1 libasound2t64 libpango-1.0-0 libcairo2
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: ''
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Generate voice sample
+        run: |
+          mkdir -p .tmp sample-assets
+          espeak-ng -v en-us -s 140 -w .tmp/voice.wav "Hello and welcome to Pimko. This is a test talking head video for the editing agent. Let us try editing it."
+          ffmpeg -y -v error -i .tmp/voice.wav -f lavfi -i 'testsrc=duration=10:size=640x360:rate=30' -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac sample-assets/voice.mp4
+      - name: UI E2E (OpenAI pipeline)
+        run: xvfb-run -a npm run test:ui
+        env:
+          PIMKO_E2E_VIDEO: ${{ github.workspace }}/sample-assets/voice.mp4
+          PIMKO_LLM_PROVIDER: openai
+          PIMKO_LLM_API_KEY: ${{ secrets.PIMKO_LLM_API_KEY }}
+          PIMKO_LLM_MODEL: ${{ vars.PIMKO_LLM_MODEL || 'gpt-4o-mini' }}
