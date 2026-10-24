@@ -188,6 +188,43 @@ void test('初稿模型返回空计划时确定性建稿，修订空计划仍拒
   })
 })
 
+void test('字幕外观独立于选段，连续修改合并字段并保留配乐', async () => {
+  const p = project()
+  p.timeline.subtitleAppearance = { position: 'top', visible: false }
+  p.timeline.bgm = { path: '/music.mp3', gainDb: -18 }
+  const plan = { clips: [{ segmentIndex: 0, startSec: 0, endSec: 5 }], subtitleAppearance: { size: 'large', visible: true }, reply: '字幕调大' }
+  await withResponses([{ plan }], async () => {
+    const result = await intelligence().reviseTimeline(p, { text: '字幕调大并显示' })
+    assert.deepEqual(result.timeline.subtitleAppearance, { position: 'top', size: 'large', visible: true })
+    assert.deepEqual(result.timeline.bgm, p.timeline.bgm)
+    assert.equal(result.timeline.clips.length, 1)
+    const styled = buildAss({ ...p, timeline: result.timeline })
+    const style = styled.split('\n').find((line) => line.startsWith('Style:'))!.split(',')
+    assert.equal(style[2], '30')
+    assert.equal(style[18], '8')
+  })
+})
+
+void test('隐藏字幕不删除转写或字幕数据，重新显示可恢复', async () => {
+  const p = project()
+  const ai = new MockIntelligence()
+  const hidden = await ai.reviseTimeline(p, { text: '隐藏字幕' })
+  assert.ok(!buildAss({ ...p, timeline: hidden.timeline }).includes('Dialogue:'))
+  assert.deepEqual(hidden.timeline.subtitles, p.timeline.subtitles)
+  const shown = await ai.reviseTimeline({ ...p, timeline: hidden.timeline }, { text: '显示字幕并移到顶部，简洁小字' })
+  assert.equal(shown.timeline.subtitleAppearance?.visible, true)
+  assert.equal(shown.timeline.subtitleAppearance?.position, 'top')
+  assert.equal(shown.timeline.subtitleAppearance?.style, 'minimal')
+  assert.ok(buildAss({ ...p, timeline: shown.timeline }).includes('Dialogue:'))
+})
+
+void test('不支持的字幕参数在模型边界拒绝', async () => {
+  const plan = { clips: [{ segmentIndex: 0, startSec: 0, endSec: 5 }], subtitleAppearance: { size: 'huge' }, reply: '错误' }
+  await withResponses([{ plan }, { plan }, { plan }], async () => {
+    await assert.rejects(intelligence().reviseTimeline(project(), { text: '修改字幕' }), /无效结果/)
+  })
+})
+
 void test('短片段叠化按片段长度限制，避免负时长', async () => {
   const plan = { clips: [
     { segmentIndex: 0, startSec: 0, endSec: 0.2, speed: 2 },

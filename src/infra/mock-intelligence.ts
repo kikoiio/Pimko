@@ -37,6 +37,20 @@ export class MockIntelligence implements EditingIntelligence {
 
   async reviseTimeline(project: Project, feedback: Feedback): Promise<EditPlan> {
     const timeline = project.timeline
+    if (feedback.text.includes('字幕')) {
+      const appearance = { ...timeline.subtitleAppearance }
+      if (/大/.test(feedback.text)) appearance.size = 'large'
+      if (/小/.test(feedback.text)) appearance.size = 'small'
+      if (/标准|中等/.test(feedback.text)) appearance.size = 'medium'
+      if (/顶部|上方|移上/.test(feedback.text)) appearance.position = 'top'
+      if (/底部|下方|移下/.test(feedback.text)) appearance.position = 'bottom'
+      if (/居中|中间/.test(feedback.text)) appearance.position = 'center'
+      if (/简洁/.test(feedback.text)) appearance.style = 'minimal'
+      if (/加粗/.test(feedback.text)) appearance.style = 'bold'
+      if (/隐藏|关闭|不要/.test(feedback.text)) appearance.visible = false
+      if (/显示|开启/.test(feedback.text)) appearance.visible = true
+      return { timeline: { ...timeline, subtitleAppearance: appearance }, note: '已调整字幕外观（mock 演示逻辑）。' }
+    }
     if (feedback.text.includes('开头太拖')) {
       const clips = timeline.clips.slice()
       if (clips.length > 0) {

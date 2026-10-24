@@ -94,6 +94,8 @@ export function App() {
     [revision],
   )
   const silences = revision?.project.silences ?? []
+  const subtitleAppearance = revision?.project.timeline.subtitleAppearance
+  const subtitleScale = subtitleAppearance?.size === 'small' ? 0.7 : subtitleAppearance?.size === 'large' ? 1.4 : 1
 
   useEffect(() => {
     setRenderedPreview(null)
@@ -499,8 +501,14 @@ export function App() {
                 onSeeking={() => { seekingRef.current = true }}
                 onSeeked={handleSeeked}
               />
-                {previewMode === 'draft' && liveSubtitle && (
-                  <div className="subtitle-overlay">{liveSubtitle}</div>
+                {previewMode === 'draft' && liveSubtitle && subtitleAppearance?.visible !== false && (
+                  <div className="subtitle-overlay" style={{
+                    fontSize: `${22 * subtitleScale}px`,
+                    fontWeight: subtitleAppearance?.style === 'minimal' ? 400 : 700,
+                    top: subtitleAppearance?.position === 'top' ? '8%' : subtitleAppearance?.position === 'center' ? '50%' : undefined,
+                    bottom: subtitleAppearance?.position === 'top' || subtitleAppearance?.position === 'center' ? 'auto' : undefined,
+                    transform: subtitleAppearance?.position === 'center' ? 'translateY(-50%)' : undefined,
+                  }}>{liveSubtitle}</div>
                 )}
               </div>
             ) : (

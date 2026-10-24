@@ -15,6 +15,12 @@ export function toAssTime(seconds: number): string {
 }
 
 export function buildAss(project: Project): string {
+  const appearance = project.timeline.subtitleAppearance
+  const size = appearance?.size === 'small' ? 0.7 : appearance?.size === 'large' ? 1.4 : 1
+  const minimal = appearance?.style === 'minimal' || (!appearance?.style && project.settings.subtitleStyle === 'minimal-bottom')
+  const fontSize = Math.max(12, Math.round(Math.min(project.settings.width, project.settings.height) * 0.06 * size))
+  const alignment = appearance?.position === 'top' ? 8 : appearance?.position === 'center' ? 5 : 2
+  const margin = Math.round(Math.min(project.settings.width, project.settings.height) * 0.07)
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
@@ -23,7 +29,7 @@ export function buildAss(project: Project): string {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    'Style: Default,Noto Sans CJK SC,64,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,80,80,120,1',
+    `Style: Default,Noto Sans CJK SC,${fontSize},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,${minimal ? 0 : -1},0,0,0,100,100,0,0,1,${minimal ? 1 : 2},1,${alignment},${margin},${margin},${margin},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -33,7 +39,7 @@ export function buildAss(project: Project): string {
   for (const [index, clip] of project.timeline.clips.entries()) {
     if (index > 0) outputStart -= transitionDuration(project.timeline.transitions[index - 1])
     const speed = clip.speed ?? 1
-    for (const cue of project.timeline.subtitles) {
+    for (const cue of appearance?.visible === false ? [] : project.timeline.subtitles) {
       const start = Math.max(cue.startSec, clip.sourceStartSec)
       const end = Math.min(cue.endSec, clip.sourceEndSec)
       if (start < end) {

@@ -184,6 +184,15 @@ async function main(): Promise<void> {
       const undone = await page.evaluate(async (id) =>
         (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
       if (JSON.stringify(undone) !== JSON.stringify(original)) throw new Error('连续撤销没有恢复初稿')
+      const beforeSubtitleEdit = await page.locator('.bubble.agent').count()
+      await page.getByRole('textbox', { name: '剪辑反馈' }).fill('字幕调大并移到顶部')
+      await page.getByRole('button', { name: '发送', exact: true }).click()
+      await page.waitForFunction((count) => document.querySelectorAll('.bubble.agent').length > count, beforeSubtitleEdit)
+      const styled = await page.evaluate(async (id) =>
+        (await window.pimko.restoreProject(id)).revision.project.timeline, restored.projectId!)
+      if (styled.subtitleAppearance?.size !== 'large' || styled.subtitleAppearance.position !== 'top') {
+        throw new Error('对话字幕外观未生效')
+      }
       const exportPath = path.join(tmpDir, 'e2e-output.mp4')
       await app.evaluate(({ dialog }, outputPath) => {
         dialog.showSaveDialog = async () => ({ canceled: false, filePath: outputPath })

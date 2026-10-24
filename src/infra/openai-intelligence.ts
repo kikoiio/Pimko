@@ -3,6 +3,7 @@ import { CONTEXTUAL_FILLERS, findFillerWords } from '../domain/fillers'
 import { applyPauseCompressions, describePauseCompressions, planPauseCompressions } from '../domain/pause-compress'
 import type { Feedback, Project, ProjectSettings } from '../domain/project'
 import { subtitlesForClips } from '../domain/subtitles'
+import { isSubtitleAppearance, type SubtitleAppearance } from '../domain/subtitle-appearance'
 import { transitionDuration, type Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
 import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
@@ -18,6 +19,7 @@ interface LlmClip {
 interface LlmPlan {
   clips: LlmClip[]
   transitions?: ('cut' | 'crossfade')[]
+  subtitleAppearance?: SubtitleAppearance
   reply: string
 }
 
@@ -74,6 +76,7 @@ const SYSTEM_PROMPT = `你是资深短视频剪辑师，服务对象是完全不
 - 用户要求更紧凑时，优先删除口癖、重复、停顿，其次适度变速；
 - 转写下方会给出机械检测的固定口癖与语境口癖：固定口癖默认删除，语境口癖由你判断是否有语义；
 - 删除口癖的方法是把所在片段拆成两段、绕开该词的起止时间（同一 segmentIndex 可对应多个 clips）；
+- subtitleAppearance 可选：{"visible":true,"size":"small|medium|large","position":"top|center|bottom","style":"bold|minimal"}，仅返回用户要求改变的字段；字幕调大/小、移上/下/居中、简洁/加粗、隐藏/显示都通过它表达；仅改字幕时保持 clips 和 transitions 不变；
 - 未要求改变的现有剪辑、速度和转场必须保留；返回完整时间线，不要只返回改动部分；
 - reply 用一句中文说明你做了什么，有变速时说明哪段变速多少。`
 
@@ -110,14 +113,20 @@ export class OpenAiIntelligence implements EditingIntelligence {
       .join('\n')
     const plan = await this.plan(
       transcript,
-      `当前时间线：\n${current}\n\n用户反馈：${feedback.text}${this.silenceBlock(project.silences)}`,
+      `当前时间线：\n${current}\n当前字幕外观：${JSON.stringify(project.timeline.subtitleAppearance ?? {})}\n\n用户反馈：${feedback.text}${this.silenceBlock(project.silences)}`,
     )
     if (!plan) {
       // 重试耗尽仍无效：宁可报错也不静默沿用旧时间线，让用户知道这轮没生效。
       throw new Error('模型连续返回无效结果，已保留上一版。请稍后重试或换个说法。')
     }
     return {
-      timeline: { ...this.toTimeline(plan, transcript, project.assets[0]!.id), ...(project.timeline.bgm ? { bgm: project.timeline.bgm } : {}) },
+      timeline: {
+        ...this.toTimeline(plan, transcript, project.assets[0]!.id),
+        ...(project.timeline.bgm ? { bgm: project.timeline.bgm } : {}),
+        ...((project.timeline.subtitleAppearance || plan.subtitleAppearance) ? {
+          subtitleAppearance: { ...project.timeline.subtitleAppearance, ...plan.subtitleAppearance },
+        } : {}),
+      },
       note: plan.reply,
     }
   }
@@ -244,6 +253,7 @@ export class OpenAiIntelligence implements EditingIntelligence {
     return {
       clips,
       subtitles: subtitlesForClips(transcript, clips),
+      ...(plan.subtitleAppearance ? { subtitleAppearance: plan.subtitleAppearance } : {}),
       transitions: clips.slice(1).map((clip, index) => {
         const previous = clips[index]!
         const durationSec = Math.min(0.3,
@@ -282,6 +292,7 @@ function clamp(value: number, min: number, max: number): number {
 function isLlmPlan(value: unknown): value is LlmPlan {
   if (typeof value !== 'object' || value === null) return false
   const { clips, reply, transitions } = value as { clips?: unknown; reply?: unknown; transitions?: unknown }
+  if ('subtitleAppearance' in value && !isSubtitleAppearance(value.subtitleAppearance)) return false
   if (!Array.isArray(clips)) return false
   for (const clip of clips) {
     if (typeof clip !== 'object' || clip === null) return false

@@ -1,4 +1,5 @@
 import type { MediaAssetId } from './media'
+import type { SubtitleAppearance } from './subtitle-appearance'
 
 export interface TimelineClip {
   assetId: MediaAssetId
@@ -26,6 +27,7 @@ export type Transition =
 export interface Timeline {
   clips: TimelineClip[]
   subtitles: SubtitleCue[]
+  subtitleAppearance?: SubtitleAppearance
   bgm?: BgmTrack
   /** transitions[i] 衔接 clips[i] 与 clips[i+1];缺省视为硬切。 */
   transitions: Transition[]
