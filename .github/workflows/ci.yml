@@ -95,4 +95,5 @@ jobs:
           path: |
             .tmp/pimko-e2e.png
             .tmp/pimko-e2e-result.json
+            .tmp/pimko-e2e-final.png
           if-no-files-found: ignore

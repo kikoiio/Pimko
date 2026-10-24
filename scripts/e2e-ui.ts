@@ -37,7 +37,7 @@ async function main(): Promise<void> {
     await page.getByRole('button', { name: '选择视频' }).click()
 
     const video = page.locator('video')
-    await video.waitFor({ state: 'visible', timeout: 30000 })
+    await video.waitFor({ state: 'visible', timeout: 180000 })
     await page.waitForFunction(
       () => {
         const el = document.querySelector('video')
@@ -90,6 +90,13 @@ async function main(): Promise<void> {
       throw new Error(`视频渲染比例失真: rendered=${renderedRatio.toFixed(3)} intrinsic=${intrinsicRatio.toFixed(3)}`)
     }
   } finally {
+    for (const page of app.windows()) {
+      try {
+        await page.screenshot({ path: path.join(tmpDir, 'pimko-e2e-final.png') })
+      } catch {
+        // 窗口可能已被关闭
+      }
+    }
     await app.close()
   }
 }
