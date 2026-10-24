@@ -35,6 +35,8 @@ ffmpeg -f lavfi -i "flite=text=Hello and welcome to Pimko. This is a test talkin
 
 复制 `.env.example` 为 `.env` 并填入 API Key。当前管线默认 `mock`，接入真实模型时把 `PIMKO_LLM_PROVIDER` 切到 `openai` 或 `anthropic`；`.env` 不会提交。
 
+产品需求、验收标准和路线图见 [docs/requirements.md](docs/requirements.md)。
+
 ## 验证
 
 推送和 PR 会自动跑 GitHub Actions（typecheck / build / smoke），本机不承担测试负载。
