@@ -85,9 +85,7 @@ jobs:
           PIMKO_LLM_PROVIDER: openai
           PIMKO_LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           PIMKO_LLM_MODEL: ${{ matrix.model }}
-          PIMKO_TRANSCRIBE_MODEL: whisper-large-v3
-          PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.PIMKO_LLM_API_KEY }}
-          PIMKO_TRANSCRIBE_BASE_URL: https://api.groq.com/openai/v1
+          PIMKO_TRANSCRIBE_MODEL: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free
           PIMKO_LLM_BASE_URL: https://openrouter.ai/api/v1
       - name: Upload E2E artifacts
         uses: actions/upload-artifact@v4

@@ -5,8 +5,11 @@ import { MockIntelligence } from './mock-intelligence'
 import { MockTranscriber } from './mock-transcriber'
 import { OpenAiIntelligence } from './openai-intelligence'
 import { OpenAiTranscriber } from './openai-transcriber'
+import { OpenRouterTranscriber } from './openrouter-transcriber'
 
 export function createTranscriber(config: LlmConfig): Transcriber {
+  const baseUrl = config.transcribeBaseUrl ?? config.baseUrl ?? ''
+  if (baseUrl.includes('openrouter.ai')) return new OpenRouterTranscriber(config)
   return config.provider === 'openai' ? new OpenAiTranscriber(config) : new MockTranscriber()
 }
 
