@@ -367,43 +367,45 @@ export class AppSession {
     }
   }
 
-  /** 对话框 stub：video/audio 选择与保存路径。传 null 表示模拟取消。 */
+  /**
+   * 对话框 stub：video/audio 选择与保存路径。传 null 表示模拟取消，不传该键表示不接管。
+   * 回调会被序列化进主进程执行：必须用运行时构造的 Function，避免 tsx/esbuild
+   * 在函数体里注入 __name 助手导致主进程 ReferenceError。
+   */
   async stubDialogs(options: {
     video?: string | null
     audio?: string | null
     save?: string | null
   }): Promise<void> {
-    await this.app!.evaluate(({ dialog }, stubs) => {
-      const openResult = (file: string | null | undefined) =>
-        file === null
-          ? { canceled: true, filePaths: [], files: [] }
-          : file === undefined
-            ? undefined
-            : { canceled: false, filePaths: [file], files: [] }
-      const saveResult = (file: string | null | undefined) =>
-        file === null
-          ? { canceled: true, filePath: undefined }
-          : file === undefined
-            ? undefined
-            : { canceled: false, filePath: file }
+    const payload = JSON.stringify({
+      video: 'video' in options ? options.video : undefined,
+      audio: 'audio' in options ? options.audio : undefined,
+      save: 'save' in options ? options.save : undefined,
+    })
+    const setup = new Function('electron', 'payload', `
+      const { dialog } = electron
+      const stubs = JSON.parse(payload)
+      const openResult = (file) => file == null
+        ? { canceled: true, filePaths: [], files: [] }
+        : { canceled: false, filePaths: [file], files: [] }
+      const saveResult = (file) => file == null
+        ? { canceled: true, filePath: undefined }
+        : { canceled: false, filePath: file }
       if ('video' in stubs || 'audio' in stubs) {
         const originalOpen = dialog.showOpenDialog.bind(dialog)
-        dialog.showOpenDialog = ((options: unknown) => {
-          const filterName = (options as { filters?: { name?: string }[] })?.filters?.[0]?.name ?? ''
-          const wantsAudio = filterName.includes('音频')
-          const wanted = wantsAudio ? stubs.audio : stubs.video
-          if (wanted === undefined) return originalOpen(options as never)
+        dialog.showOpenDialog = (openOptions) => {
+          const filters = (openOptions && openOptions.filters) || []
+          const filterName = (filters[0] && filters[0].name) || ''
+          const wanted = filterName.includes('音频') ? stubs.audio : stubs.video
+          if (wanted === undefined) return originalOpen(openOptions)
           return Promise.resolve(openResult(wanted))
-        }) as typeof dialog.showOpenDialog
+        }
       }
       if ('save' in stubs) {
-        dialog.showSaveDialog = (() => Promise.resolve(saveResult(stubs.save))) as typeof dialog.showSaveDialog
+        dialog.showSaveDialog = () => Promise.resolve(saveResult(stubs.save))
       }
-    }, {
-      video: options.video,
-      audio: options.audio,
-      save: options.save,
-    } as Record<string, string | null | undefined>)
+    `)
+    await this.app!.evaluate(setup as never, payload)
   }
 
   async state(projectId: string): Promise<RevisionSnapshot> {
