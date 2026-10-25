@@ -136,6 +136,7 @@ async function main(): Promise<void> {
         PIMKO_LLM_PROVIDER: 'openai',
         PIMKO_LLM_API_KEY: 'sk-acceptance-controlled',
         PIMKO_LLM_BASE_URL: provider.baseUrl,
+        PIMKO_TRANSCRIBE_BASE_URL: provider.baseUrl,
       })
       await session.start()
       await session.stubDialogs({ video: materialPath(MATERIALS.F1) })
@@ -278,6 +279,7 @@ async function main(): Promise<void> {
         PIMKO_LLM_PROVIDER: 'openai',
         PIMKO_LLM_API_KEY: 'sk-acceptance-fake-key',
         PIMKO_LLM_BASE_URL: provider.baseUrl,
+        PIMKO_TRANSCRIBE_BASE_URL: provider.baseUrl,
       })
       await session.start()
       await session.stubDialogs({ video: materialPath(MATERIALS.F1) })
@@ -316,6 +318,7 @@ async function main(): Promise<void> {
         PIMKO_LLM_PROVIDER: 'openai',
         PIMKO_LLM_API_KEY: 'sk-acceptance-controlled',
         PIMKO_LLM_BASE_URL: 'http://127.0.0.1:9/v1',
+        PIMKO_TRANSCRIBE_BASE_URL: 'http://127.0.0.1:9/v1',
       })
       await session.start()
       await session.stubDialogs({ video: materialPath(MATERIALS.F1) })
@@ -334,6 +337,7 @@ async function main(): Promise<void> {
         PIMKO_LLM_PROVIDER: 'openai',
         PIMKO_LLM_API_KEY: 'sk-acceptance-controlled',
         PIMKO_LLM_BASE_URL: provider.baseUrl,
+        PIMKO_TRANSCRIBE_BASE_URL: provider.baseUrl,
       })
       await session2.start()
       await session2.stubDialogs({ video: materialPath(MATERIALS.F1) })
@@ -357,6 +361,7 @@ async function main(): Promise<void> {
         PIMKO_LLM_PROVIDER: 'openai',
         PIMKO_LLM_API_KEY: 'sk-acceptance-controlled',
         PIMKO_LLM_BASE_URL: provider.baseUrl,
+        PIMKO_TRANSCRIBE_BASE_URL: provider.baseUrl,
       })
       await session3.start()
       await session3.stubDialogs({ video: materialPath(MATERIALS.F1) })
