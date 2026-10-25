@@ -71,9 +71,13 @@ class ControlledProvider {
     } else if (kind === 'transcribe') {
       scripted = { status: 200, body: JSON.stringify(cannedTranscript()) }
     } else {
-      scripted = { status: 500, body: '{"error":"controlled endpoint queue empty"}' }
+      // 空队列兜底：返回「保持全部内容」的合法计划，避免脚本记账漂移放大成 500。
+      // FA-04b/FA-06 等预期失败场景都在队列里放了足量非法响应，不会走到这里。
+      console.error('[controlled] 队列空，chat 回退为保持现状计划')
+      scripted = { status: 200, body: JSON.stringify({ choices: [{ message: { content: fullPlan('保持不变（受控兜底）') } }] }) }
     }
     this.requests.push({ url, bodyPreview: body.slice(0, 200), status: scripted.status })
+    console.error(`[controlled] req#${this.requests.length} ${kind} ${url.slice(0, 40)} -> ${scripted.status} resp=${scripted.body.slice(0, 160)}`)
     if (scripted.delayMs) await new Promise((resolve) => setTimeout(resolve, scripted.delayMs))
     res.writeHead(scripted.status, { 'Content-Type': 'application/json' })
     res.end(scripted.body)
