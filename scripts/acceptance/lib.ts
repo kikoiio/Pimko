@@ -444,10 +444,10 @@ export class AppSession {
   }
 
   async importVideo(timeoutMs = 120000): Promise<void> {
-    // 成功信号 = 「消息重置后出现新草稿气泡」。导入成功会先清空消息再追加草稿说明，
-    // 因此气泡数会先回落（< before）再出现 ≥1；导入前若为 0 条则只看出现 ≥1。
-    // 连续导入同一素材时旧 video 元素不会重挂载，不能拿 video 出现当信号。
-    const bubblesBefore = await this.agentBubbleCount()
+    // 成功信号 = 项目数增加：导入必然新建项目，且 store.save 先于 IPC 返回。
+    // （气泡信号不可靠：React 18 把「清空消息+追加草稿气泡」合并为一次 commit，
+    //  导入前 1 条时 DOM 气泡数 1 → 1，观测不到变化；video 元素也不会重挂载。）
+    const projectsBefore = (await this.listProjects()).length
     const emptyButton = this.page.getByRole('button', { name: '选择视频' })
     if (await emptyButton.isVisible().catch(() => false)) {
       await emptyButton.click()
@@ -455,23 +455,23 @@ export class AppSession {
       await this.button('导入视频').click()
     }
     const deadline = Date.now() + timeoutMs
-    let dipped = bubblesBefore === 0
     for (;;) {
-      if (Date.now() > deadline) throw new Error(`导入超时且无错误条（${timeoutMs}ms，before=${bubblesBefore} dipped=${dipped}）`)
-      if (await this.page.locator('.error-bar').isVisible().catch(() => false)) {
-        if ((await this.agentBubbleCount()) >= 1 && dipped) break
-        if (!(await this.button('导入视频').isEnabled().catch(() => false))) {
-          throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
-        }
-        // 错误条可能是残留；导入按钮已恢复可用且无新气泡 → 本轮失败
-        if (!(dipped) && (await this.agentBubbleCount()) === bubblesBefore) {
-          throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
-        }
+      if (Date.now() > deadline) throw new Error(`导入超时且无错误条（${timeoutMs}ms，projectsBefore=${projectsBefore}）`)
+      const errorVisible = await this.page.locator('.error-bar').isVisible().catch(() => false)
+      const projectsNow = (await this.listProjects()).length
+      if (projectsNow > projectsBefore) break
+      if (errorVisible && !(await this.button('导入视频').isEnabled().catch(() => false))) {
+        throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
       }
-      const count = await this.agentBubbleCount()
-      if (count < bubblesBefore) dipped = true
-      if (dipped && count >= 1) break
-      await this.page.waitForTimeout(200)
+      if (errorVisible) {
+        // 错误条残留时按钮已恢复可用：确认本轮导入确实没有新项目后再报失败
+        await this.page.waitForTimeout(400)
+        if ((await this.listProjects()).length <= projectsBefore) {
+          throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
+        }
+        break
+      }
+      await this.page.waitForTimeout(300)
     }
     await this.waitDraftReady()
   }
