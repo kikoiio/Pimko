@@ -65,10 +65,25 @@ async function restoreFromRecent(session: AppSession, projectId: string): Promis
   await session.waitDraftReady()
 }
 
-/** 点击第 1 张卡片播放，等待字幕叠层出现后测量 overlay/stage/video 包围盒。 */
+/** 点击第 1 张卡片播放，等待字幕叠层出现后测量 overlay/stage/video 包围盒。
+ * overlay 只在草稿播放且当前源时间有字幕时渲染；强制起播并兜底重试一次。 */
 async function playAndMeasureOverlay(session: AppSession): Promise<{ overlay: Box | null; stage: Box | null }> {
   await session.page.locator('.clip').first().click({ force: true })
-  await session.page.locator('.subtitle-overlay').waitFor({ state: 'visible', timeout: 15000 })
+  // 确保视频真正在播（force 点击不保证 React onClick 已触发 play）
+  await session.page.evaluate(() => {
+    const v = document.querySelector('video') as HTMLVideoElement | null
+    if (v && v.paused) void v.play()
+  })
+  try {
+    await session.page.locator('.subtitle-overlay').waitFor({ state: 'visible', timeout: 20000 })
+  } catch {
+    // 二次兜底：重置到第 1 段起点再播
+    await session.page.evaluate(() => {
+      const v = document.querySelector('video') as HTMLVideoElement | null
+      if (v) { v.currentTime = 0.2; v.playbackRate = 1; void v.play() }
+    })
+    await session.page.locator('.subtitle-overlay').waitFor({ state: 'visible', timeout: 20000 })
+  }
   return session.page.evaluate(() => {
     const overlay = document.querySelector('.subtitle-overlay')
     const stage = document.querySelector('.stage')
