@@ -68,6 +68,9 @@ async function restoreFromRecent(session: AppSession, projectId: string): Promis
 /** 点击第 1 张卡片播放，等待字幕叠层出现后测量 overlay/stage/video 包围盒。
  * overlay 只在草稿播放且当前源时间有字幕时渲染；强制起播并兜底重试一次。 */
 async function playAndMeasureOverlay(session: AppSession): Promise<{ overlay: Box | null; stage: Box | null }> {
+  // overlay 只在草稿模式渲染；上一用例导出后停在成片模式（卡片被禁用）需先切回
+  const draftTab = session.page.getByRole('tab', { name: '草稿预览' })
+  if (await draftTab.count() > 0) await draftTab.click().catch(() => undefined)
   await session.page.locator('.clip').first().click({ force: true })
   // 确保视频真正在播（force 点击不保证 React onClick 已触发 play）
   await session.page.evaluate(() => {
