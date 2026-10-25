@@ -456,7 +456,10 @@ export class AppSession {
     }
     const deadline = Date.now() + timeoutMs
     for (;;) {
-      if (Date.now() > deadline) throw new Error(`导入超时且无错误条（${timeoutMs}ms，projectsBefore=${projectsBefore}）`)
+      if (Date.now() > deadline) {
+        await this.dumpTimeoutState(`importVideo-timeout(before=${projectsBefore})`).catch(() => undefined)
+        throw new Error(`导入超时且无错误条（${timeoutMs}ms，projectsBefore=${projectsBefore}）`)
+      }
       const errorVisible = await this.page.locator('.error-bar').isVisible().catch(() => false)
       const projectsNow = (await this.listProjects()).length
       if (projectsNow > projectsBefore) break
@@ -473,18 +476,40 @@ export class AppSession {
       }
       await this.page.waitForTimeout(300)
     }
-    await this.waitDraftReady()
+    await this.waitDraftReady(60000)
   }
 
   /** 发送反馈并等待修订结果气泡（预期成功）。 */
   async sendFeedback(text: string, timeoutMs = 120000): Promise<void> {
     // before 必须在点击前捕获：mock 修订可在点击后数十毫秒内出新气泡。
     const before = await this.submitFeedback(text)
-    await this.page.waitForFunction(
-      (count) => document.querySelectorAll('.bubble.agent').length > count,
-      before,
-      { timeout: timeoutMs },
-    )
+    try {
+      await this.page.waitForFunction(
+        (count) => document.querySelectorAll('.bubble.agent').length > count,
+        before,
+        { timeout: timeoutMs },
+      )
+    } catch (err) {
+      await this.dumpTimeoutState(`sendFeedback-timeout(before=${before})`).catch(() => undefined)
+      throw err
+    }
+  }
+
+  /** 疑难超时现场取证：截图 + 页面文本 + 项目/气泡状态，写入批次目录。 */
+  async dumpTimeoutState(label: string): Promise<void> {
+    const { mkdir, writeFile } = await import('node:fs/promises')
+    const dir = path.join(root, '.tmp', 'acceptance', '_timeouts')
+    await mkdir(dir, { recursive: true }).catch(() => undefined)
+    const stamp = Date.now()
+    await this.page.screenshot({ path: path.join(dir, `${stamp}-${label.replace(/[^\w-]/g, '_')}.png`) }).catch(() => undefined)
+    const state = await this.page.evaluate(() => ({
+      bubbles: document.querySelectorAll('.bubble.agent').length,
+      lastBubble: document.querySelector('.bubble.agent:last-child')?.textContent?.slice(0, 120) ?? '',
+      errorBar: document.querySelector('.error-bar')?.textContent?.slice(0, 120) ?? '',
+      inputDisabled: (document.querySelector('input[aria-label="剪辑反馈"]') as HTMLInputElement | null)?.disabled ?? null,
+      bodySnippet: document.body.innerText.slice(0, 400),
+    })).catch(() => 'evaluate-failed')
+    await writeFile(path.join(dir, `${stamp}-${label.replace(/[^\w-]/g, '_')}.json`), JSON.stringify({ label, state }, null, 2)).catch(() => undefined)
   }
 
   /** 只提交反馈不等结果；返回发送前的气泡数。 */
