@@ -1,0 +1,70 @@
+name: Acceptance
+
+# 验收专用工作流（docs/testing-acceptance.md）——仅手动触发，不占用常规 CI。
+# 重型 GUI 自动化、渲染与故障注入一律在此执行；本机不跑这些负载。
+on:
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: '批次列表（逗号分隔）: first-experience, injection, import, editing, store, real'
+        required: true
+        default: 'first-experience,injection'
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  batch:
+    name: 批次 ${{ matrix.batch }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: ${{ fromJSON(format('[{0}]', github.event.inputs.batches)) }}
+    env:
+      PIMKO_ACCEPTANCE_HOME: ${{ github.workspace }}/.acc-home
+      PIMKO_ACCEPTANCE_GIT_REV: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install system deps
+        run: >
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          ffmpeg xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2
+          libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2
+          libgbm1 libasound2t64 libpango-1.0-0 libcairo2 fonts-noto-cjk
+      - name: npm ci（含 Electron 二进制）
+        run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Generate fixtures（F1–F7 + 边界语料 + 配乐）
+        run: |
+          npm run fixtures
+          npm run fixtures:boundaries
+      - name: Public samples（真实批次需要 P1–P4）
+        if: matrix.batch == 'real'
+        run: npm run samples
+      - name: Run batch（xvfb 单实例）
+        run: xvfb-run -a npx tsx scripts/acceptance/run-${{ matrix.batch }}.ts
+        env:
+          PIMKO_LLM_PROVIDER: ${{ matrix.batch == 'real' && 'openai' || 'mock' }}
+          PIMKO_LLM_API_KEY: ${{ secrets.OPENROUTER_LLM_API_KEY }}
+          PIMKO_LLM_MODEL: ${{ vars.PIMKO_LLM_MODEL }}
+          PIMKO_LLM_BASE_URL: ${{ vars.PIMKO_LLM_BASE_URL }}
+          PIMKO_TRANSCRIBE_MODEL: ${{ vars.PIMKO_TRANSCRIBE_MODEL }}
+          PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.GROQ_LLM_API_KEY }}
+          PIMKO_TRANSCRIBE_BASE_URL: ${{ vars.PIMKO_TRANSCRIBE_BASE_URL }}
+      - name: Upload acceptance evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: acceptance-${{ matrix.batch }}
+          path: |
+            .tmp/acceptance/
+          if-no-files-found: warn
+          retention-days: 14
