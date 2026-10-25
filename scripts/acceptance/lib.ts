@@ -444,7 +444,8 @@ export class AppSession {
   }
 
   async importVideo(timeoutMs = 120000): Promise<void> {
-    // 成功信号用「草稿气泡比导入前多」：导入成功会先清空消息再追加草稿说明，
+    // 成功信号 = 「消息重置后出现新草稿气泡」。导入成功会先清空消息再追加草稿说明，
+    // 因此气泡数会先回落（< before）再出现 ≥1；导入前若为 0 条则只看出现 ≥1。
     // 连续导入同一素材时旧 video 元素不会重挂载，不能拿 video 出现当信号。
     const bubblesBefore = await this.agentBubbleCount()
     const emptyButton = this.page.getByRole('button', { name: '选择视频' })
@@ -453,31 +454,32 @@ export class AppSession {
     } else {
       await this.button('导入视频').click()
     }
+    const deadline = Date.now() + timeoutMs
+    let dipped = bubblesBefore === 0
     for (;;) {
-      const done = await Promise.race([
-        this.page.waitForFunction(
-          (count) => document.querySelectorAll('.bubble.agent').length > count,
-          bubblesBefore,
-          { timeout: timeoutMs },
-        ).then(() => 'draft' as const).catch(() => null),
-        this.page.locator('.error-bar').waitFor({ state: 'visible', timeout: timeoutMs })
-          .then(() => 'error' as const).catch(() => null),
-      ])
-      if (done === 'draft') break
-      if (done === 'error') {
-        // 错误条可能是上一轮操作残留：仅当本轮输入框回到可用状态且无新气泡时才算本轮失败。
-        if ((await this.agentBubbleCount()) > bubblesBefore) break
-        throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
+      if (Date.now() > deadline) throw new Error(`导入超时且无错误条（${timeoutMs}ms，before=${bubblesBefore} dipped=${dipped}）`)
+      if (await this.page.locator('.error-bar').isVisible().catch(() => false)) {
+        if ((await this.agentBubbleCount()) >= 1 && dipped) break
+        if (!(await this.button('导入视频').isEnabled().catch(() => false))) {
+          throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
+        }
+        // 错误条可能是残留；导入按钮已恢复可用且无新气泡 → 本轮失败
+        if (!(dipped) && (await this.agentBubbleCount()) === bubblesBefore) {
+          throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
+        }
       }
-      throw new Error(`导入超时且无错误条（${timeoutMs}ms）`)
+      const count = await this.agentBubbleCount()
+      if (count < bubblesBefore) dipped = true
+      if (dipped && count >= 1) break
+      await this.page.waitForTimeout(200)
     }
     await this.waitDraftReady()
   }
 
   /** 发送反馈并等待修订结果气泡（预期成功）。 */
   async sendFeedback(text: string, timeoutMs = 120000): Promise<void> {
-    await this.submitFeedback(text)
-    const before = await this.agentBubbleCount()
+    // before 必须在点击前捕获：mock 修订可在点击后数十毫秒内出新气泡。
+    const before = await this.submitFeedback(text)
     await this.page.waitForFunction(
       (count) => document.querySelectorAll('.bubble.agent').length > count,
       before,
