@@ -7,6 +7,17 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import type { CaseRecord } from './lib'
 
+/** 递归收集目录下全部 record.json。 */
+async function walkRecords(dir: string): Promise<string[]> {
+  const found: string[] = []
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name)
+    if (entry.isDirectory()) found.push(...await walkRecords(full))
+    else if (entry.name === 'record.json') found.push(full)
+  }
+  return found
+}
+
 const root = path.resolve(__dirname, '..', '..')
 const acceptanceRoot = path.join(root, '.tmp', 'acceptance')
 
@@ -21,9 +32,7 @@ async function collect(): Promise<Row[]> {
   for (const batch of await readdir(acceptanceRoot)) {
     const batchPath = path.join(acceptanceRoot, batch)
     if (!(await stat(batchPath)).isDirectory() || batch === 'ffmpeg-shim') continue
-    for (const entry of await readdir(batchPath)) {
-      const recordFile = path.join(batchPath, entry, 'record.json')
-      if (!existsSync(recordFile)) continue
+    for (const recordFile of await walkRecords(batchPath)) {
       try {
         rows.push({ batch, record: JSON.parse(await readFile(recordFile, 'utf8')) as CaseRecord })
       } catch (err) {

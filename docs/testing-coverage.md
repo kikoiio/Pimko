@@ -9,7 +9,7 @@
 - 已下载至本机 `sample-assets/boundaries/`，导入时再次核对 32 个文件的字节数和 SHA256，合计 49,340,814 字节。`manifest.json` 与 `check-results.json` 同在该目录。连同已有 7 个合成文件、4 个公开样本，共有 43 个测试媒体文件（包括故意损坏的输入）。
 - 本机 `npm run check:editing`：31/31 通过。新脚本 TypeScript 检查及 `git diff --check` 通过；本机没有启动 GUI、生成或渲染任务。
 - 通用 CI [40110495245](https://github.com/kikoiio/Pimko/actions/runs/40110495245)：verify 和 mock UI 通过；真实接口 UI 导入因免费模型限流失败。后续两个仅测试准备的提交取消了重复通用 CI，保留独立语料检查；没有再次消耗真实模型请求来证明语义能力。
-- [人工验收](testing-acceptance.md) 共 84 个唯一用例，**均未执行**。故障注入与缺材料的条件项仍标为阻塞；其余待用户体验。不会把这些条目计为已通过。
+- [人工验收](testing-acceptance.md) 的 84 个用例已由自动化轮次执行 121 条记录（含变体）：通过 97、失败 8、限制已确认 15、阻塞 1（另有 PV-03/06/07 三条待测）。执行记录、真实缺陷清单（含存储单点、双击重复修订、1fps 导出挂起等 6 项）与对照样品说明见 [acceptance-run-2026-10-25.md](acceptance-run-2026-10-25.md)。主观听感/观感与剩余人工项仍待用户体验。
 
 ## 已有覆盖
 
