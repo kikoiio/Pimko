@@ -79,7 +79,6 @@ class ControlledProvider {
     this.requests.push({ url, bodyPreview: body.slice(0, 200), status: scripted.status })
     console.error(`[controlled] req#${this.requests.length} ${kind} ${url.slice(0, 40)} -> ${scripted.status} resp=${scripted.body.slice(0, 200)}`)
     if (kind === 'chat') {
-      const marker = body.indexOf('转写片段')
       const marker = body.indexOf('字/s）')
       console.error(`[controlled] req#${this.requests.length} 用户消息转写段=${marker >= 0 ? body.slice(Math.max(0, marker - 200), marker + 500) : '(未找到)'}`)
     }
