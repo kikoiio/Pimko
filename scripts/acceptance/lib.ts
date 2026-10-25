@@ -224,7 +224,9 @@ export class Case {
   private readonly userData: string
 
   constructor(options: CaseOptions) {
-    this.dir = path.join(batchDir(), `${options.id}${options.variant ? `-${options.variant}` : ''}`)
+    // upload-artifact 禁止路径含 : < > | * ? " 等字符；变体名（如 clips:[]）需消毒
+    const safe = (value: string) => value.replace(/[:<>*?"|\r\n]/g, '-')
+    this.dir = path.join(batchDir(), `${safe(options.id)}${options.variant ? `-${safe(options.variant)}` : ''}`)
     this.userData = path.join(process.env.PIMKO_ACCEPTANCE_HOME ?? '', '.config', 'pimko')
     this.record = {
       id: options.id,
