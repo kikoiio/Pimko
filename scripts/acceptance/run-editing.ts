@@ -701,3 +701,8 @@ async function main(): Promise<void> {
     await session.close()
   })
 }
+
+void main().catch((err) => {
+  console.error(err)
+  process.exitCode = 1
+})
