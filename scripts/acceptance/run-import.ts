@@ -8,12 +8,16 @@
  *
  * 只在 CI（GitHub Actions / xvfb）运行；本机不得执行（Electron/渲染重型操作）。
  */
+import { execFile } from 'node:child_process'
 import { mkdir } from 'node:fs/promises'
+import { promisify } from 'node:util'
 import path from 'node:path'
 import type { Page } from 'playwright'
 import {
   AppSession, Case, MATERIALS, materialPath, outDir, probeMedia, runBatch,
 } from './lib'
+
+const execFileAsync = promisify(execFile)
 
 const F1 = () => materialPath(MATERIALS.F1)
 
@@ -399,7 +403,23 @@ async function main(): Promise<void> {
           im13.record.output = { path: outPath, durationSec: outProbe.durationSec, width: outProbe.width, height: outProbe.height }
           await im13.finish('通过', `1fps 素材导出 ${outProbe.durationSec.toFixed(2)}s（时间线 ${expectDur.toFixed(2)}s）`)
         } catch (err) {
-          await im13.finish('失败', `low-fps 失败：${err instanceof Error ? err.message.slice(0, 140) : String(err)}`)
+          const message = err instanceof Error ? err.message : String(err)
+          // 直击复现：用渲染器同款逐段裁切命令直接打 one-fps 源，判定挂起发生在哪一层
+          let repro = '未执行'
+          try {
+            const reproOut = outDir('IM-13-low-fps-repro.mp4')
+            const started = Date.now()
+            await execFileAsync('ffmpeg', [
+              '-y', '-v', 'error', '-ss', '0', '-to', '4', '-i', materialPath(MATERIALS.boundary('one-fps.mp4')),
+              '-vf', 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2,setsar=1',
+              '-r', '30', '-c:a', 'aac', '-ar', '48000', '-ac', '2', reproOut,
+            ], { timeout: 90000 })
+            repro = `ffmpeg 直裁 1fps 源成功（${((Date.now() - started) / 1000).toFixed(1)}s）→ 挂起在应用管线层`
+          } catch (reproErr) {
+            repro = `ffmpeg 直裁 1fps 源同样失败/超时（${String(reproErr).slice(0, 120)}）→ ffmpeg 层行为`
+          }
+          im13.record.defects.push(`1fps 导出超时（复现）；层定位：${repro}`)
+          await im13.finish('失败', `low-fps 失败：${message.slice(0, 120)}；${repro}`)
         }
       }
       // audio-only 应被拒绝

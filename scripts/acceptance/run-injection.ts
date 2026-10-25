@@ -242,7 +242,12 @@ async function main(): Promise<void> {
         clips: [{ segmentIndex: 0, startSec: 0, endSec: 3.5, speed: 1.5 }, { segmentIndex: 1, startSec: 4.7, endSec: 8.2 }],
         transitions: ['cut'], reply: '受控成功修改',
       }) } }] }) }))
-      await session.sendFeedback('受控成功修改：首段1.5倍速')
+      try {
+        await session.sendFeedback('受控成功修改：首段1.5倍速')
+      } catch (err) {
+        console.error(`[UN-05 调试] sendFeedback 异常: ${String(err).slice(0, 160)}；受控端点已记录请求数=${provider.requests.length}，末次=${JSON.stringify(provider.requests.slice(-2)).slice(0, 300)}`)
+        throw err
+      }
       const baseline = await session.state(projectId)
       un05.check('成功修改生效', baseline.timeline.clips[0]!.speed === 1.5, `speed=${baseline.timeline.clips[0]!.speed}`)
       provider.reset()

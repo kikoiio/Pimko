@@ -510,6 +510,7 @@ export class AppSession {
       bodySnippet: document.body.innerText.slice(0, 400),
     })).catch(() => 'evaluate-failed')
     await writeFile(path.join(dir, `${stamp}-${label.replace(/[^\w-]/g, '_')}.json`), JSON.stringify({ label, state }, null, 2)).catch(() => undefined)
+    console.error(`[timeout-forensics] ${label}: ${JSON.stringify(state).slice(0, 600)}`)
   }
 
   /** 只提交反馈不等结果；返回发送前的气泡数。 */
@@ -553,20 +554,25 @@ export class AppSession {
     await this.stubDialogs({ save: outputPath })
     await this.button('生成成片').click()
     await this.page.getByRole('tab', { name: '成片预览' }).waitFor({ timeout: timeoutMs })
-    await this.page.waitForFunction(() => {
-      const video = document.querySelector('video')
-      return video !== null && video.readyState >= 2 && video.videoWidth > 0 && video.playbackRate === 1
-    })
+    try {
+      await this.page.waitForFunction(() => {
+        const video = document.querySelector('video')
+        return video !== null && video.readyState >= 2 && video.videoWidth > 0 && video.playbackRate === 1
+      }, undefined, { timeout: 60000 })
+    } catch (err) {
+      await this.dumpTimeoutState(`exportTo-preview-timeout(${path.basename(outputPath)})`).catch(() => undefined)
+      throw err
+    }
   }
 
-  async waitDraftReady(): Promise<void> {
+  async waitDraftReady(timeoutMs = 30000): Promise<void> {
     await this.page.waitForFunction(
       () => {
         const video = document.querySelector('video')
         return !!video && video.readyState >= 2 && video.videoWidth > 0
       },
       undefined,
-      { timeout: 30000 },
+      { timeout: timeoutMs },
     )
   }
 }
