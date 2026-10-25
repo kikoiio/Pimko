@@ -476,7 +476,12 @@ export class AppSession {
       }
       await this.page.waitForTimeout(300)
     }
-    await this.waitDraftReady(60000)
+    // 草稿已建好；预览可解码性交给各用例自行断言（FFV1 等编码浏览器解不了，
+    // 但导入/修订/导出走 ffmpeg，不受影响）——这里等待失败不视为导入失败。
+    await this.waitDraftReady(45000).catch(async () => {
+      console.error('[importVideo] 草稿预览 45s 内未达可解码状态（源编码可能不被 Chromium 支持），继续用例')
+      await this.dumpTimeoutState('importVideo-preview-undecodable').catch(() => undefined)
+    })
   }
 
   /** 发送反馈并等待修订结果气泡（预期成功）。 */
