@@ -80,7 +80,8 @@ class ControlledProvider {
     console.error(`[controlled] req#${this.requests.length} ${kind} ${url.slice(0, 40)} -> ${scripted.status} resp=${scripted.body.slice(0, 200)}`)
     if (kind === 'chat') {
       const marker = body.indexOf('转写片段')
-      console.error(`[controlled] req#${this.requests.length} 请求体[标记起900字]=${marker >= 0 ? body.slice(marker, marker + 900) : body.slice(0, 300)}`)
+      const marker = body.indexOf('字/s）')
+      console.error(`[controlled] req#${this.requests.length} 用户消息转写段=${marker >= 0 ? body.slice(Math.max(0, marker - 200), marker + 500) : '(未找到)'}`)
     }
     if (scripted.delayMs) await new Promise((resolve) => setTimeout(resolve, scripted.delayMs))
     res.writeHead(scripted.status, { 'Content-Type': 'application/json' })
