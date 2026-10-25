@@ -130,13 +130,14 @@ export async function audioRmsDb(file: string, startSec: number, endSec: number)
 
 /** 帧平均亮度（0-255），用于黑屏/黑闪断言。signalstats 元数据走 stderr。 */
 export async function frameLumaAvg(file: string, atSec: number): Promise<number> {
-  const { stderr } = await execFileAsync('ffmpeg', [
+  const { stdout, stderr } = await execFileAsync('ffmpeg', [
     '-ss', String(atSec), '-i', file, '-frames:v', '1',
     '-vf', 'scale=32x32,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-',
     '-f', 'null', '-',
   ])
-  const match = /lavfi\.signalstats\.YAVG=([\d.]+)/.exec(stderr)
-  if (!match) throw new Error(`signalstats 未输出 YAVG`)
+  // file=- 写 stdout；个别构建走 stderr 元数据。两边都找。
+  const match = /lavfi\.signalstats\.YAVG=([\d.]+)/.exec(`${stdout}\n${stderr}`)
+  if (!match) throw new Error(`signalstats 未输出 YAVG（stdout=${stdout.slice(0, 80)}）`)
   return Number(match[1])
 }
 
