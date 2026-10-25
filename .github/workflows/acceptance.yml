@@ -49,9 +49,11 @@ jobs:
       - name: Public samples（真实批次需要 P1–P4）
         if: matrix.batch == 'real'
         run: npm run samples
-      - name: Run batch（xvfb 单实例）
+      - name: Run batch（xvfb 单实例；HOME 隔离在 shell 层保证传播）
         run: xvfb-run -a npx tsx scripts/acceptance/run-${{ matrix.batch }}.ts
         env:
+          HOME: ${{ github.workspace }}/.acc-home
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.acc-home/.config
           PIMKO_LLM_PROVIDER: ${{ matrix.batch == 'real' && 'openai' || 'mock' }}
           PIMKO_LLM_API_KEY: ${{ secrets.OPENROUTER_LLM_API_KEY }}
           PIMKO_LLM_MODEL: ${{ vars.PIMKO_LLM_MODEL }}

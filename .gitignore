@@ -9,3 +9,6 @@ sample-assets/
 # packaging
 resources/bin/
 release/
+
+# 验收对照样品（供用户体验，不入库）
+acceptance-samples/

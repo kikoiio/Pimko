@@ -149,6 +149,7 @@ export interface BatchResult {
   records: string[]
 }
 
+const trackedSessions: AppSession[] = []
 const batchState: { batch?: string; dir?: string; results: BatchResult } = { results: { batch: '', passed: 0, failed: 0, blocked: 0, limited: 0, records: [] } }
 
 export function batchDir(): string {
@@ -192,6 +193,8 @@ export async function runBatch(
     await fn({ recordDir: dir })
   } catch (err) {
     crashed = err
+  } finally {
+    for (const session of [...trackedSessions]) await session.close().catch(() => undefined)
   }
   const summaryPath = path.join(dir, 'summary.json')
   await writeFile(summaryPath, JSON.stringify(batchState.results, null, 2))
@@ -202,6 +205,8 @@ export async function runBatch(
     process.exitCode = 1
   }
   console.log(`批次 ${name} 完成: 通过=${batchState.results.passed} 失败=${batchState.results.failed} 阻塞=${batchState.results.blocked} 限制=${batchState.results.limited}`)
+  // tsx 的 esbuild 服务会吊住事件循环：批次结束后显式退出，避免 CI 步骤挂到超时。
+  process.exit(process.exitCode ?? (batchState.results.failed > 0 ? 1 : 0))
 }
 
 export interface CaseOptions {
@@ -324,12 +329,17 @@ export class AppSession {
   }
 
   async start(): Promise<void> {
+    const session = this
+    void session
     this.app = await electron.launch({
       executablePath: path.join(root, 'node_modules/electron/dist/electron'),
-      args: [path.join(root, 'out/main/index.js'), '--no-sandbox', '--disable-gpu'],
+      // 传项目根目录而非 main 脚本：Electron 读 package.json（name=pimko），
+      // userData 才会是 <XDG_CONFIG_HOME>/pimko 而非默认的 .config/Electron。
+      args: [root, '--no-sandbox', '--disable-gpu'],
       env: {
         ...process.env,
         HOME: this.home,
+        XDG_CONFIG_HOME: path.join(this.home, '.config'),
         WAYLAND_DISPLAY: '',
         DISPLAY: process.env.DISPLAY ?? ':99',
         ...this.launchEnv,
@@ -344,9 +354,12 @@ export class AppSession {
       throw new Error(`userData 隔离校验失败：实际 ${actualUserData}，期望 ${this.userData}（中止以保护真实数据）`)
     }
     await this.page.waitForLoadState('domcontentloaded')
+    trackedSessions.push(this)
   }
 
   async close(): Promise<void> {
+    const index = trackedSessions.indexOf(this)
+    if (index >= 0) trackedSessions.splice(index, 1)
     if (this.app) {
       await this.app.close().catch(() => undefined)
       this.app = undefined
