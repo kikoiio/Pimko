@@ -67,7 +67,7 @@ async function restoreFromRecent(session: AppSession, projectId: string): Promis
 
 /** 点击第 1 张卡片播放，等待字幕叠层出现后测量 overlay/stage/video 包围盒。 */
 async function playAndMeasureOverlay(session: AppSession): Promise<{ overlay: Box | null; stage: Box | null }> {
-  await session.page.locator('.clip').first().click()
+  await session.page.locator('.clip').first().click({ force: true })
   await session.page.locator('.subtitle-overlay').waitFor({ state: 'visible', timeout: 15000 })
   return session.page.evaluate(() => {
     const overlay = document.querySelector('.subtitle-overlay')
@@ -468,7 +468,7 @@ async function main(): Promise<void> {
       const hidden = await session.state(pid)
       su04.check('visible=false', hidden.timeline.subtitleAppearance?.visible === false, JSON.stringify(hidden.timeline.subtitleAppearance))
       // 草稿模式播放验证无叠层
-      await session.page.locator('.clip').first().click()
+      await session.page.locator('.clip').first().click({ force: true })
       await session.page.waitForTimeout(1200)
       su04.check('草稿模式无字幕叠层', (await session.page.locator('.subtitle-overlay').count()) === 0, 'count=0')
       await su04.screenshot(session.page, 'hidden-draft')
