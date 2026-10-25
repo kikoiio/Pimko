@@ -482,15 +482,15 @@ async function main(): Promise<void> {
         fa01.check('错误条可见', errorText.length > 0, `"${errorText.slice(0, 90)}"`)
         const alive = await session.page.evaluate(() => document.body.innerText.length > 20 && !!document.querySelector('.app'))
         fa01.check('不白屏', alive, '应用外壳与文本仍在')
-        const afterCount = (await session.listProjects()).length
-        fa01.check('不新增假草稿', afterCount === beforeCount, `${beforeCount} → ${afterCount}`)
+        const afterList = await session.listProjects()
+        fa01.check('不新增假草稿', afterList.length === beforeCount, `${beforeCount} → ${afterList.length}；末位=${afterList[0]?.name ?? '?'}`)
         // 随后导入 F1 仍成功；旧项目仍在
         await session.stubDialogs({ video: F1() })
         await session.importVideo()
         await session.waitDraftReady()
-        const finalCount = (await session.listProjects()).length
-        fa01.check('有效材料仍可导入', finalCount === afterCount + 1, `${afterCount} → ${finalCount}`)
-        fa01.check('旧项目仍在', finalCount >= baselineCount, `${finalCount} ≥ 基线 ${baselineCount}`)
+        const finalList = await session.listProjects()
+        fa01.check('有效材料仍可导入', finalList.length === afterList.length + 1, `${afterList.length} → ${finalList.length}；末位=${finalList[0]?.name ?? '?'}`)
+        fa01.check('旧项目仍在', finalList.length >= baselineCount, `${finalList.length} ≥ 基线 ${baselineCount}`)
         // 报错可理解性：中文友好文案 vs 原始 ffprobe/系统输出
         const friendly = /[\u4e00-\u9fff]/.test(errorText) && !/Command failed|stderr|Exit code|\bat \S+\(/.test(errorText)
         if (!friendly) {

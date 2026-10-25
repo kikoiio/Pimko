@@ -368,9 +368,10 @@ export class AppSession {
   }
 
   /**
-   * 对话框 stub：video/audio 选择与保存路径。传 null 表示模拟取消，不传该键表示不接管。
-   * 回调会被序列化进主进程执行：必须用运行时构造的 Function，避免 tsx/esbuild
-   * 在函数体里注入 __name 助手导致主进程 ReferenceError。
+   * 对话框 stub：video/audio 选择与保存路径。传 null 表示模拟取消，不传该键保持上次值。
+   * 实现：主进程安装一次单例桩，之后每次只更新桩状态（避免链式包装的竞态）。
+   * 回调会被序列化进主进程：必须用运行时构造的 Function，避免 tsx/esbuild
+   * 在函数体里注入 __name 助手导致对端 ReferenceError。
    */
   async stubDialogs(options: {
     video?: string | null
@@ -382,30 +383,36 @@ export class AppSession {
       audio: 'audio' in options ? options.audio : undefined,
       save: 'save' in options ? options.save : undefined,
     })
-    const setup = new Function('electron', 'payload', `
+    const install = new Function('electron', `
       const { dialog } = electron
-      const stubs = JSON.parse(payload)
-      const openResult = (file) => file == null
-        ? { canceled: true, filePaths: [], files: [] }
-        : { canceled: false, filePaths: [file], files: [] }
-      const saveResult = (file) => file == null
-        ? { canceled: true, filePath: undefined }
-        : { canceled: false, filePath: file }
-      if ('video' in stubs || 'audio' in stubs) {
-        const originalOpen = dialog.showOpenDialog.bind(dialog)
+      const holder = globalThis
+      if (!holder.__pimkoAcceptanceStubs) {
+        holder.__pimkoAcceptanceStubs = { video: undefined, audio: undefined, save: undefined }
         dialog.showOpenDialog = (openOptions) => {
+          const stubs = holder.__pimkoAcceptanceStubs
           const filters = (openOptions && openOptions.filters) || []
           const filterName = (filters[0] && filters[0].name) || ''
           const wanted = filterName.includes('音频') ? stubs.audio : stubs.video
-          if (wanted === undefined) return originalOpen(openOptions)
-          return Promise.resolve(openResult(wanted))
+          if (wanted === undefined) return { canceled: true, filePaths: [], files: [] }
+          return Promise.resolve(wanted === null
+            ? { canceled: true, filePaths: [], files: [] }
+            : { canceled: false, filePaths: [wanted], files: [] })
+        }
+        dialog.showSaveDialog = () => {
+          const stubs = holder.__pimkoAcceptanceStubs
+          return Promise.resolve(stubs.save == null
+            ? { canceled: true, filePath: undefined }
+            : { canceled: false, filePath: stubs.save })
         }
       }
-      if ('save' in stubs) {
-        dialog.showSaveDialog = () => Promise.resolve(saveResult(stubs.save))
-      }
     `)
-    await this.app!.evaluate(setup as never, payload)
+    await this.app!.evaluate(install as never)
+    const update = new Function('electron', 'payload', `
+      const stubs = globalThis.__pimkoAcceptanceStubs
+      const patch = JSON.parse(payload)
+      for (const key of Object.keys(patch)) stubs[key] = patch[key]
+    `)
+    await this.app!.evaluate(update as never, payload)
   }
 
   async state(projectId: string): Promise<RevisionSnapshot> {
@@ -437,33 +444,60 @@ export class AppSession {
   }
 
   async importVideo(timeoutMs = 120000): Promise<void> {
+    // 成功信号用「草稿气泡比导入前多」：导入成功会先清空消息再追加草稿说明，
+    // 连续导入同一素材时旧 video 元素不会重挂载，不能拿 video 出现当信号。
+    const bubblesBefore = await this.agentBubbleCount()
     const emptyButton = this.page.getByRole('button', { name: '选择视频' })
     if (await emptyButton.isVisible().catch(() => false)) {
       await emptyButton.click()
     } else {
       await this.button('导入视频').click()
     }
-    await this.page.waitForFunction(
-      () => document.querySelector('video') !== null,
-      undefined,
-      { timeout: timeoutMs },
-    )
-    await this.page.waitForFunction(
-      () => document.querySelectorAll('.bubble.agent').length > 0,
-      undefined,
-      { timeout: 10000 },
-    ).catch(() => undefined)
+    for (;;) {
+      const done = await Promise.race([
+        this.page.waitForFunction(
+          (count) => document.querySelectorAll('.bubble.agent').length > count,
+          bubblesBefore,
+          { timeout: timeoutMs },
+        ).then(() => 'draft' as const).catch(() => null),
+        this.page.locator('.error-bar').waitFor({ state: 'visible', timeout: timeoutMs })
+          .then(() => 'error' as const).catch(() => null),
+      ])
+      if (done === 'draft') break
+      if (done === 'error') {
+        // 错误条可能是上一轮操作残留：仅当本轮输入框回到可用状态且无新气泡时才算本轮失败。
+        if ((await this.agentBubbleCount()) > bubblesBefore) break
+        throw new Error(`导入失败：${await this.page.locator('.error-bar').innerText()}`)
+      }
+      throw new Error(`导入超时且无错误条（${timeoutMs}ms）`)
+    }
+    await this.waitDraftReady()
   }
 
+  /** 发送反馈并等待修订结果气泡（预期成功）。 */
   async sendFeedback(text: string, timeoutMs = 120000): Promise<void> {
+    await this.submitFeedback(text)
     const before = await this.agentBubbleCount()
-    await this.page.getByRole('textbox', { name: '剪辑反馈' }).fill(text)
-    await this.button('发送').click()
     await this.page.waitForFunction(
       (count) => document.querySelectorAll('.bubble.agent').length > count,
       before,
       { timeout: timeoutMs },
     )
+  }
+
+  /** 只提交反馈不等结果；返回发送前的气泡数。 */
+  async submitFeedback(text: string): Promise<number> {
+    const before = await this.agentBubbleCount()
+    await this.page.getByRole('textbox', { name: '剪辑反馈' }).fill(text)
+    await this.button('发送').click()
+    return before
+  }
+
+  /** 发送反馈并等待错误条出现（预期失败场景：UI 不产生结果气泡）。返回错误文案。 */
+  async sendFeedbackExpectError(text: string, timeoutMs = 120000): Promise<string> {
+    await this.submitFeedback(text)
+    await this.page.locator('.error-bar').waitFor({ state: 'visible', timeout: timeoutMs })
+    return this.page.locator('.error-bar').innerText()
   }
 
   /** 等待错误条出现（用于预期失败的场景）。 */

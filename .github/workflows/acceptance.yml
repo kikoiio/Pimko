@@ -45,7 +45,7 @@ jobs:
       - name: Generate fixtures（F1–F7 + 边界语料 + 配乐）
         run: |
           npm run fixtures
-          npm run fixtures:boundaries
+          npx tsx scripts/make-boundaries.ts --extended
       - name: Public samples（真实批次需要 P1–P4）
         if: matrix.batch == 'real'
         run: npm run samples

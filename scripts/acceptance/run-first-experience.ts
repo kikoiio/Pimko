@@ -172,10 +172,10 @@ async function main(): Promise<void> {
     await su01.finish('通过', '字幕字号与位置修改生效')
 
     // ── 步骤 7：BG-01 添加配乐 + BG-03 轻 ──────────────────────────
-    const bgmPath = materialPath(MATERIALS.boundary('supportMedia/bgm-2s.wav'))
+    const bgmPath = materialPath(MATERIALS.boundary('bgm-2s.wav'))
     const bg01 = new Case({
       id: 'BG-01', variant: 'M/F1/wav（首次体验）', mode: 'M',
-      material: MATERIALS.boundary('supportMedia/bgm-2s.wav'),
+      material: MATERIALS.boundary('bgm-2s.wav'),
       expected: '出现三档音量和移除配乐；修订包含配乐设置',
     })
     const bg03 = new Case({

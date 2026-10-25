@@ -167,8 +167,7 @@ async function main(): Promise<void> {
         provider.reset()
         for (let i = 0; i < 3; i++) provider.push('chat', () => ({ status: 200, body: JSON.stringify({ choices: [{ message: { content: variant.content } }] }) }))
         const before = (await session.state(projectId)).id
-        await session.sendFeedback(`受控修订失败：${variant.name}`)
-        const errorText = await session.waitForError()
+        const errorText = await session.sendFeedbackExpectError(`受控修订失败：${variant.name}`)
         const after = (await session.state(projectId)).id
         const chatRequests = provider.requests.filter((r) => r.url.includes('chat')).length
         const ok = errorText.includes('无效结果') && before === after && chatRequests === 3
@@ -186,8 +185,7 @@ async function main(): Promise<void> {
       provider.reset()
       provider.push('chat', () => ({ status: 200, body: JSON.stringify({ choices: [{ message: { content: JSON.stringify({ clips: [], reply: '已全部删除' }) } }] }) }))
       const beforeFa05 = await session.state(projectId)
-      await session.sendFeedback('把所有内容全部删掉，一段也不留')
-      const errorFa05 = await session.waitForError()
+      const errorFa05 = await session.sendFeedbackExpectError('把所有内容全部删掉，一段也不留')
       const afterFa05 = await session.state(projectId)
       fa05.check('明确拒绝', /变空|保留上一版/.test(errorFa05), `错误="${errorFa05.slice(0, 60)}"`)
       fa05.check('revision 不变', afterFa05.id === beforeFa05.id, `${beforeFa05.id.slice(0, 8)} == ${afterFa05.id.slice(0, 8)}`)
@@ -221,8 +219,7 @@ async function main(): Promise<void> {
         const content = JSON.stringify(variant.plan)
         for (let i = 0; i < 3; i++) provider.push('chat', () => ({ status: 200, body: JSON.stringify({ choices: [{ message: { content } }] }) }))
         const before = (await session.state(projectId)).id
-        await session.sendFeedback(`受控非法计划：${variant.name}`)
-        const errorText = await session.waitForError()
+        const errorText = await session.sendFeedbackExpectError(`受控非法计划：${variant.name}`)
         const after = (await session.state(projectId)).id
         const chatRequests = provider.requests.filter((r) => r.url.includes('chat')).length
         const ok = before === after && chatRequests === 3 && !errorText.includes('"clips"')
@@ -250,8 +247,7 @@ async function main(): Promise<void> {
       un05.check('成功修改生效', baseline.timeline.clips[0]!.speed === 1.5, `speed=${baseline.timeline.clips[0]!.speed}`)
       provider.reset()
       for (let i = 0; i < 3; i++) provider.push('chat', () => ({ status: 200, body: JSON.stringify({ choices: [{ message: { content: '{{bad' } }] }) }))
-      await session.sendFeedback('受控失败修订')
-      await session.waitForError()
+      await session.sendFeedbackExpectError('受控失败修订')
       const afterFail = await session.state(projectId)
       await session.undo()
       const undone = await session.state(projectId)
@@ -286,8 +282,7 @@ async function main(): Promise<void> {
       ] as const) {
         provider.reset()
         provider.push('chat', () => ({ status, body: JSON.stringify({ error: { message: 'controlled' } }) }))
-        await session.sendFeedback(`受控 ${name} 错误`)
-        const errorText = await session.waitForError()
+        const errorText = await session.sendFeedbackExpectError(`受控 ${name} 错误`)
         const bodyText = await session.page.evaluate(() => document.body.innerText)
         const pass = errorText.includes(keyword) && !bodyText.includes('sk-acceptance') && !bodyText.includes('Bearer')
         ok = ok && pass
@@ -335,8 +330,7 @@ async function main(): Promise<void> {
       const projectId = (await session2.listProjects())[0]!.projectId
       const beforeOffline = await session2.state(projectId)
       await provider.stop()
-      await session2.sendFeedback('断网后修订')
-      const offlineReviseError = await session2.waitForError()
+      const offlineReviseError = await session2.sendFeedbackExpectError('断网后修订')
       const afterOffline = await session2.state(projectId)
       const inputEnabled = await session2.page.getByRole('textbox', { name: '剪辑反馈' }).isEnabled()
       fa03.check('离线修订中文提示', /网络请求失败/.test(offlineReviseError), `"${offlineReviseError.slice(0, 60)}"`)
@@ -369,8 +363,7 @@ async function main(): Promise<void> {
       provider.reset()
       for (let i = 0; i < 5; i++) provider.push('chat', () => ({ status: 429, body: '{"error":"rate limited"}' }))
       const beforeExhaust = await session3.state(projectId3)
-      await session3.sendFeedback('受控429耗尽')
-      const exhaustError = await session3.waitForError(90000)
+      const exhaustError = await session3.sendFeedbackExpectError('受控429耗尽', 90000)
       const exhaustElapsed = (Date.now() - retryStart) / 1000
       const afterExhaust = await session3.state(projectId3)
       fa03.check('429 耗尽后中文提示', /限流|频繁/.test(exhaustError), `"${exhaustError.slice(0, 60)}"（耗时 ${exhaustElapsed.toFixed(1)}s 含上轮）`)
