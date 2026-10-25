@@ -79,8 +79,8 @@ class ControlledProvider {
     this.requests.push({ url, bodyPreview: body.slice(0, 200), status: scripted.status })
     console.error(`[controlled] req#${this.requests.length} ${kind} ${url.slice(0, 40)} -> ${scripted.status} resp=${scripted.body.slice(0, 200)}`)
     if (kind === 'chat') {
-      const transcriptLine = /转写片段（index: 起止秒 文本）：\n([\s\S]{0,420})/.exec(body)
-      console.error(`[controlled] req#${this.requests.length} 请求体转写片段=${transcriptLine ? transcriptLine[1]!.slice(0, 420) : '(未匹配到转写段)'}`)
+      const marker = body.indexOf('转写片段')
+      console.error(`[controlled] req#${this.requests.length} 请求体[标记起900字]=${marker >= 0 ? body.slice(marker, marker + 900) : body.slice(0, 300)}`)
     }
     if (scripted.delayMs) await new Promise((resolve) => setTimeout(resolve, scripted.delayMs))
     res.writeHead(scripted.status, { 'Content-Type': 'application/json' })
