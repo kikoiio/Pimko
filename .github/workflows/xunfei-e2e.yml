@@ -1,0 +1,58 @@
+name: XUNFEI E2E
+
+# 手动触发的讯飞 MaaS 真实链路：真实转写 + spark-x2.6 planner + 导出/质量闸门。
+on:
+  workflow_dispatch:
+    inputs:
+      rounds:
+        description: '连续反馈轮数（1–30）'
+        required: true
+        default: '8'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: xunfei-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PIMKO_XUNFEI_ROUNDS: ${{ inputs.rounds }}
+      PIMKO_XUNFEI_VIDEO: sample-assets/public/en-speaking.mp4
+      PIMKO_XUNFEI_OUT: .tmp/xunfei-e2e
+      PIMKO_LLM_PROVIDER: openai
+      PIMKO_LLM_API_KEY: ${{ secrets.XUNFEI_LLM_API_KEY }}
+      PIMKO_LLM_MODEL: ${{ vars.XUNFEI_MODEL }}
+      PIMKO_LLM_BASE_URL: ${{ vars.XUNFEI_OPENAI_RESPONSE_URL }}
+      PIMKO_TRANSCRIBE_MODEL: ${{ vars.PIMKO_TRANSCRIBE_MODEL }}
+      PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.GROQ_LLM_API_KEY }}
+      PIMKO_TRANSCRIBE_BASE_URL: ${{ vars.PIMKO_TRANSCRIBE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run check:editing
+      - name: Fetch public speaking samples
+        run: npm run samples
+      - name: Run XUNFEI chain
+        run: npm run xunfei:e2e
+      - name: Upload XUNFEI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xunfei-e2e
+          path: .tmp/xunfei-e2e/
+          if-no-files-found: warn
+          retention-days: 14
