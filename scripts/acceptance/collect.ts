@@ -1,6 +1,6 @@
 /**
- * 汇总 .tmp/acceptance/**\/record.json → 验收执行记录（Markdown 表格 + 统计）。
- * 在 CI 结束后本机执行（纯读取，无重型负载）；文档骨架供人工补充缺陷分析。
+ * 汇总 .tmp/acceptance/**\/record.json → .tmp/acceptance/records.md（Markdown 表格 + 统计）。
+ * 在 CI 结束后本机执行（纯读取，无重型负载），输出供人工查看与补充缺陷分析。
  */
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   const lines: string[] = []
   lines.push('# 验收执行记录（自动化轮次）')
   lines.push('')
-  lines.push(`生成时间：${new Date().toISOString()}；执行者：ZCode 自动化验收（GitHub Actions）；依据 [testing-acceptance.md](testing-acceptance.md) 的 84 个用例。`)
+  lines.push(`生成时间：${new Date().toISOString()}；执行者：自动化验收（GitHub Actions）。`)
   lines.push('')
   lines.push('## 统计')
   lines.push('')
@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   if (defectIndex === 0) lines.push('（本轮自动化执行未记录到缺陷）')
   lines.push('')
 
-  const outPath = path.join(root, 'docs', 'acceptance-run-2026-10-25.generated.md')
+  const outPath = path.join(acceptanceRoot, 'records.md')
   const { writeFile } = await import('node:fs/promises')
   await writeFile(outPath, lines.join('\n'), 'utf8')
   console.log(`已生成 ${outPath}`)

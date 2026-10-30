@@ -1,5 +1,5 @@
 /**
- * 验收批次：import（docs/testing-acceptance.md 第 3 节 导入与材料边界 + FA-01）。
+ * 验收批次：import（导入与材料边界 + FA-01）。
  *
  * 覆盖：IM-02、IM-03（mp4/mov/mkv/webm/m4v 五变体）、IM-04、IM-05、IM-06、IM-07、
  * IM-08（F7 / one-frame 两变体）、IM-09（special-path/rotate90/sar/vfr 四变体）、

@@ -9,6 +9,7 @@ import { FfmpegProber } from '../src/infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../src/infra/ffmpeg-renderer'
 import { extractAudio } from '../src/infra/extract-audio'
 import { resolveFfmpeg, resolveFfprobe } from '../src/infra/ffmpeg-bin'
+import { compileProject } from '../src/domain/legacy'
 import type { Project } from '../src/domain/project'
 
 const exec = promisify(execFile)
@@ -66,7 +67,13 @@ async function main(): Promise<void> {
               subtitles: [{ startSec: 0, endSec: Math.min(2, asset.durationSec), text: '边界测试 Boundary' }], transitions: [],
             },
           }
-          await new FfmpegRenderer().render(project, path.join(caseWork, 'export.mp4'))
+          await new FfmpegRenderer().render({
+            compiled: compileProject(project),
+            assets: project.assets,
+            settings: project.settings,
+            outputPath: path.join(caseWork, 'export.mp4'),
+            mode: 'preview',
+          })
         }
         results.push({ id: spec.id, status: 'passed', detail: spec.render && process.argv.includes('--render') ? '素材属性 + 实际渲染自检通过' : '素材属性通过', productStatus: '真实转写、剪辑语义、画面和听感仍待人工验收' })
       } catch (error) {

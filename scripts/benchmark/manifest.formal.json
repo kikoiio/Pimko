@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "description": "本机可用的正式基准 B1–B5。B4 是合成屏幕占位（无真实教程语义/文字），评分时只看画面连续与步骤占位，不把它当真实教程质量结论。",
+  "assetDirEnv": "PIMKO_BENCHMARK_DIR",
+  "defaultRounds": [
+    "开头太拖，收紧开头直接进正题",
+    "去掉口癖和废话，让语言更紧凑",
+    "第一段 1.5 倍速",
+    "把节奏重排一下，把高潮放前面",
+    "字幕字体大一点"
+  ],
+  "roundsNote": "5 轮固定反馈：开头收紧、去口癖/废条、按段变速、重排、字幕/配乐。",
+  "cases": [
+    { "id": "B1", "title": "中文口播", "contentKind": "speech", "file": "b1-zh.mp4", "description": "真实中文讲话竖屏 45s；质量契约的严格切片" },
+    { "id": "B2", "title": "英文口播", "contentKind": "speech", "file": "b2-en.mp4", "description": "真实英文讲话 30s；英文词边界/标点" },
+    { "id": "B3", "title": "旅行/蒙太奇", "contentKind": "visual", "file": "b3-montage.mp4", "description": "Sintel 预告片去音轨 52s；镜头/节拍占位，非旅行实拍" },
+    { "id": "B4", "title": "教程/录屏", "contentKind": "tutorial", "file": "b4-screen.mp4", "description": "ffmpeg 合成屏幕测试图 15s；仅验证无音轨视觉路径，无教程语义/OCR" },
+    { "id": "B5", "title": "合成边界", "contentKind": "boundary", "file": "b5-boundary.mp4", "description": "带噪语音边界；切词/爆音/黑帧检查" }
+  ]
+}

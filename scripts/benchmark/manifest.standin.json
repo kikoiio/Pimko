@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "description": "本地 mock baseline 的替代素材清单：把 B1–B5 槽位映射到 Pimko 主仓 sample-assets 里现成的公开样品。这些不是正式基准语料（正式清单见 manifest.json，文件名 b1-*.mp4 等），切点/语义类结论不可外推，只用于验证链路、建立流程基线。standinFor 字段标注被替代的正式素材文件名。",
+  "assetDirEnv": "PIMKO_BENCHMARK_DIR",
+  "defaultRounds": [
+    "开头太拖，收紧开头直接进正题",
+    "去掉口癖和废话，让语言更紧凑",
+    "第一段 1.5 倍速",
+    "把节奏重排一下，把高潮放前面",
+    "字幕字体大一点"
+  ],
+  "cases": [
+    {
+      "id": "B1",
+      "title": "中文口播",
+      "contentKind": "speech",
+      "file": "public/zh-speaking-portrait.mp4",
+      "standinFor": "b1-zh-speech.mp4",
+      "description": "替代素材：真实中文讲话竖屏样品（45s），非正式 B1 语料"
+    },
+    {
+      "id": "B2",
+      "title": "英文口播",
+      "contentKind": "speech",
+      "file": "public/en-speaking.mp4",
+      "standinFor": "b2-en-speech.mp4",
+      "description": "替代素材：真实英文讲话样品（30s），非正式 B2 语料"
+    },
+    {
+      "id": "B3",
+      "title": "旅行/蒙太奇",
+      "contentKind": "visual",
+      "file": "public/sintel-trailer.mp4",
+      "standinFor": "b3-travel-montage.mp4",
+      "description": "替代素材：Sintel 预告片（52s），电影级蒙太奇，非旅行实拍"
+    },
+    {
+      "id": "B4",
+      "title": "教程/录屏",
+      "contentKind": "tutorial",
+      "file": "testsrc.mp4",
+      "standinFor": "b4-tutorial-screen.mp4",
+      "description": "替代素材：ffmpeg 合成测试图（15s），无教程语义"
+    },
+    {
+      "id": "B5",
+      "title": "合成边界",
+      "contentKind": "boundary",
+      "file": "boundaries/silence.mp4",
+      "standinFor": "b5-boundary-edge.mp4",
+      "description": "替代素材：全静音边界样品（4s），边界语料的一个子集"
+    }
+  ]
+}

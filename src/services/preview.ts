@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
+import { compileProject } from '../domain/legacy'
 import type { ProjectRevision } from '../domain/project'
 import type { ExportProgress, Renderer } from '../ports/renderer'
 
@@ -20,8 +21,10 @@ export class PreviewService {
     const key = createHash('sha256').update(`${revision.project.id}\0${revision.id}`).digest('hex')
     const existing = this.pending.get(key)
     if (existing) return existing
+    // 预览与导出共享同一个编译器；快照在入队时固定，避免调用后被原地修改。
     const snapshot = structuredClone(revision)
-    const task = this.queue.then(() => this.renderSnapshot(snapshot, key, onProgress))
+    const compiled = compileProject(snapshot.project)
+    const task = this.queue.then(() => this.renderSnapshot(snapshot, compiled, key, onProgress))
     this.pending.set(key, task)
     this.queue = task.then(() => undefined, () => undefined)
     void task.finally(() => this.pending.delete(key)).catch(() => undefined)
@@ -30,6 +33,7 @@ export class PreviewService {
 
   private async renderSnapshot(
     revision: ProjectRevision,
+    compiled: ReturnType<typeof compileProject>,
     key: string,
     onProgress?: (progress: ExportProgress) => void,
   ): Promise<RenderedPreview> {
@@ -43,7 +47,13 @@ export class PreviewService {
     }
     const temporary = path.join(this.cacheRoot, `${key}-${randomUUID()}.partial.mp4`)
     try {
-      await this.renderer.render(revision.project, temporary, onProgress)
+      await this.renderer.render({
+        compiled,
+        assets: revision.project.assets,
+        settings: revision.project.settings,
+        outputPath: temporary,
+        mode: 'preview',
+      }, onProgress)
       await rename(temporary, outputPath)
       return { revisionId: revision.id, outputPath }
     } finally {

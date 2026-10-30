@@ -1,12 +1,12 @@
 name: Acceptance
 
-# 验收专用工作流（docs/testing-acceptance.md）——仅手动触发，不占用常规 CI。
+# 验收专用工作流——仅手动触发，不占用常规 CI。
 # 重型 GUI 自动化、渲染与故障注入一律在此执行；本机不跑这些负载。
 on:
   workflow_dispatch:
     inputs:
       batches:
-        description: '批次列表（逗号分隔）: first-experience, injection, import, editing, store, real'
+        description: '批次列表（逗号分隔）: first-experience, injection, import, media, editing, store, real'
         required: true
         default: 'first-experience,injection'
 

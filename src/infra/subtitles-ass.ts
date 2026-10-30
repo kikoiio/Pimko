@@ -1,5 +1,6 @@
-import type { Project } from '../domain/project'
-import { transitionDuration } from '../domain/timeline'
+import type { CompiledTimeline } from '../domain/compiler'
+import type { ProjectSettings } from '../domain/project'
+import type { SubtitleAppearance } from '../domain/subtitle-appearance'
 
 function assText(text: string): string {
   // 字幕是文本，不能被解释为 ASS 样式命令。
@@ -14,18 +15,19 @@ export function toAssTime(seconds: number): string {
   return `${hours}:${String(minutes).padStart(2, '0')}:${String(wholeSeconds).padStart(2, '0')}.${String(centiseconds % 100).padStart(2, '0')}`
 }
 
-export function buildAss(project: Project): string {
-  const appearance = project.timeline.subtitleAppearance
+/** 只消费编译产物：字幕时间已是输出时间，不再在这里做源时间映射。 */
+export function buildAss(compiled: CompiledTimeline, settings: ProjectSettings): string {
+  const appearance = compiled.subtitleAppearance
   const size = appearance?.size === 'small' ? 0.7 : appearance?.size === 'large' ? 1.4 : 1
-  const minimal = appearance?.style === 'minimal' || (!appearance?.style && project.settings.subtitleStyle === 'minimal-bottom')
-  const fontSize = Math.max(12, Math.round(Math.min(project.settings.width, project.settings.height) * 0.06 * size))
-  const alignment = appearance?.position === 'top' ? 8 : appearance?.position === 'center' ? 5 : 2
-  const margin = Math.round(Math.min(project.settings.width, project.settings.height) * 0.07)
+  const minimal = appearance?.style === 'minimal' || (!appearance?.style && settings.subtitleStyle === 'minimal-bottom')
+  const fontSize = Math.max(12, Math.round(Math.min(settings.width, settings.height) * 0.06 * size))
+  const alignment = alignmentOf(appearance)
+  const margin = Math.round(Math.min(settings.width, settings.height) * 0.07)
   const header = [
     '[Script Info]',
     'ScriptType: v4.00+',
-    `PlayResX: ${project.settings.width}`,
-    `PlayResY: ${project.settings.height}`,
+    `PlayResX: ${settings.width}`,
+    `PlayResY: ${settings.height}`,
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
@@ -34,19 +36,13 @@ export function buildAss(project: Project): string {
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ].join('\n')
-  const events: string[] = []
-  let outputStart = 0
-  for (const [index, clip] of project.timeline.clips.entries()) {
-    if (index > 0) outputStart -= transitionDuration(project.timeline.transitions[index - 1])
-    const speed = clip.speed ?? 1
-    for (const cue of appearance?.visible === false ? [] : project.timeline.subtitles) {
-      const start = Math.max(cue.startSec, clip.sourceStartSec)
-      const end = Math.min(cue.endSec, clip.sourceEndSec)
-      if (start < end) {
-        events.push(`Dialogue: 0,${toAssTime(outputStart + (start - clip.sourceStartSec) / speed)},${toAssTime(outputStart + (end - clip.sourceStartSec) / speed)},Default,,0,0,0,,${assText(cue.text)}`)
-      }
-    }
-    outputStart += (clip.sourceEndSec - clip.sourceStartSec) / speed
-  }
+  if (!compiled.subtitlesEnabled) return `${header}\n\n`
+  const events = compiled.subtitles.map((cue) =>
+    `Dialogue: 0,${toAssTime(cue.startSec)},${toAssTime(cue.endSec)},Default,,0,0,0,,${assText(cue.text)}`,
+  )
   return `${header}\n${events.join('\n')}\n`
+}
+
+function alignmentOf(appearance: SubtitleAppearance | undefined): number {
+  return appearance?.position === 'top' ? 8 : appearance?.position === 'center' ? 5 : 2
 }

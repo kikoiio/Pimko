@@ -447,3 +447,36 @@ button {
     transition: none !important;
   }
 }
+
+
+.quality-bar {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  flex: none;
+}
+
+.quality-bar strong {
+  color: var(--accent);
+}
+
+.quality-bar.pass strong {
+  color: #7bd88f;
+}
+
+.quality-bar.fail strong {
+  color: var(--danger);
+}
+
+.quality-bar span {
+  color: var(--text-dim);
+}
+
+.quality-issues {
+  color: #e5b567;
+}

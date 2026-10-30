@@ -8,6 +8,7 @@ import { transitionDuration, type Timeline } from '../domain/timeline'
 import type { Transcript } from '../domain/transcript'
 import type { EditPlan, EditingIntelligence } from '../ports/intelligence'
 import type { LlmConfig } from './llm-config'
+import { firstJsonObject, requestJsonCompletion } from './openai-chat'
 
 interface LlmClip {
   segmentIndex: number
@@ -21,31 +22,6 @@ interface LlmPlan {
   transitions?: ('cut' | 'crossfade')[]
   subtitleAppearance?: SubtitleAppearance
   reply: string
-}
-
-/** 从模型输出里取第一个完整的 JSON 对象：兼容 ```json 围栏、前后解释文字。 */
-function firstJsonObject(text: string): string | null {
-  const start = text.indexOf('{')
-  if (start < 0) return null
-  let depth = 0
-  let inString = false
-  let escaped = false
-  for (let index = start; index < text.length; index++) {
-    const char = text[index]!
-    if (inString) {
-      if (escaped) escaped = false
-      else if (char === '\\') escaped = true
-      else if (char === '"') inString = false
-      continue
-    }
-    if (char === '"') inString = true
-    else if (char === '{') depth++
-    else if (char === '}') {
-      depth--
-      if (depth === 0) return text.slice(start, index + 1)
-    }
-  }
-  return null
 }
 
 function parseLlmPlan(content: string, transcript: Transcript): LlmPlan | null {
@@ -161,7 +137,6 @@ export class OpenAiIntelligence implements EditingIntelligence {
   }
 
   private async plan(transcript: Transcript, userMessage: string): Promise<LlmPlan | null> {
-    const baseUrl = this.config.baseUrl ?? 'https://api.openai.com/v1'
     const segments = transcript.segments
       .map((segment, index) => {
         // 语速密度进 prompt:LLM 判断"别再加速"或"这段可以 1.3x"的依据。
@@ -170,66 +145,14 @@ export class OpenAiIntelligence implements EditingIntelligence {
         return `${index}: ${segment.startSec.toFixed(2)}-${segment.endSec.toFixed(2)}（${density.toFixed(1)}字/s） ${segment.text}${words ? `\n词级时间：${words}` : ''}`
       })
       .join('\n')
-    const body: Record<string, unknown> = {
-      model: this.config.model ?? 'gpt-4o-mini',
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `转写片段（index: 起止秒 文本）：\n${segments}${this.fillerBlock(transcript)}\n\n${userMessage}` },
-      ],
-    }
-    // OpenRouter 的结构化输出按端点"尽力而为"；该参数只把请求路由到强制 schema 的端点。
-    // 部分免费模型不支持 response_format，命中时在下面自动降级。
-    const isOpenRouter = baseUrl.includes('openrouter.ai')
-    if (isOpenRouter) body.provider = { require_parameters: true }
-
-    // 限流与"端点不支持结构化输出"都不是模型答错，单独重试；JSON 解析失败才算一次尝试。
-    let jsonAttempts = 0
-    let rateRetries = 0
-    let relaxed = !isOpenRouter
-    while (jsonAttempts < 3) {
-      const response = await fetch(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) {
-        const detail = await response.text()
-        // 免费模型常被限流：按 Retry-After 等一会儿再试，别立刻把错误抛给用户。
-        if (response.status === 429 && rateRetries < 2) {
-          rateRetries++
-          const retryAfter = Number(response.headers.get('retry-after'))
-          const waitMs = Math.min(
-            Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 4000 * rateRetries,
-            20000,
-          )
-          await new Promise((resolve) => setTimeout(resolve, waitMs))
-          continue
-        }
-        const unsupported =
-          isOpenRouter &&
-          (response.status === 400 || response.status === 404) &&
-          /response_format|structured|require_parameters|No endpoints found/i.test(detail)
-        if (unsupported && !relaxed) {
-          // 该模型的端点不支持强制结构化输出：去掉参数，改用提示词约束 + 本地解析。
-          relaxed = true
-          delete body.provider
-          delete body.response_format
-          continue
-        }
-        throw new Error(`LLM 请求失败: ${response.status} ${detail}`)
-      }
-      jsonAttempts++
-      const data = (await response.json()) as { choices?: { message?: { content?: string } }[] }
-      const content = data.choices?.[0]?.message?.content
-      if (!content) continue
-      const parsed = parseLlmPlan(content, transcript)
-      if (parsed) return parsed
-    }
-    return null
+    return requestJsonCompletion(
+      this.config,
+      {
+        system: SYSTEM_PROMPT,
+        user: `转写片段（index: 起止秒 文本）：\n${segments}${this.fillerBlock(transcript)}\n\n${userMessage}`,
+        parse: (content) => parseLlmPlan(content, transcript),
+      },
+    )
   }
 
   private toTimeline(plan: LlmPlan, transcript: Transcript, assetId: string): Timeline {

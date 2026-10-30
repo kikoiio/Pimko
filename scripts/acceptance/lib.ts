@@ -1,5 +1,5 @@
 /**
- * 验收 harness 共享库（docs/testing-acceptance.md）。
+ * 验收 harness 共享库。
  *
  * 只在 CI（GitHub Actions / xvfb）运行；每个批次一个 Electron 实例。
  * userData 通过 HOME 覆盖隔离到批次工作目录，启动后用 app.getPath('userData')
@@ -236,7 +236,7 @@ export class Case {
       status: '待测',
       startedAt: new Date().toISOString(),
       endedAt: '',
-      executor: 'ZCode 自动化验收（GitHub Actions）',
+      executor: '自动化验收（GitHub Actions）',
       codeRevision: GIT_REVISION,
       platform: PLATFORM,
       userDataDir: this.userData,

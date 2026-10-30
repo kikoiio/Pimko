@@ -1,102 +1,117 @@
-# Pimko 架构设计
+# Pimko 架构（当前实现）
 
-## Problem
+> 更新：2026-10-29。本文描述现有代码，不是目标设计。产品意图与质量契约见 [intent.md](intent.md)，架构决策与权衡见 [剪辑架构设计](design/2026-10-29-editing-architecture.md)，执行进度见 [重建计划](plans/2026-10-29-editing-core-rebuild.md)。
 
-Pimko 是一个面向"完全不会剪辑"用户的短视频剪辑 agent。用户给一段口播素材，用自然语言提出需求和反馈，系统产出一条可直接发布的竖版成片（字幕 + BGM + 转场）。第一用户是作者本人；MVP 是桌面技术演示（Electron + 本地 ffmpeg），模型层可插拔（先 mock 后接真实 API），Android 上传/审阅推迟到 V2。
+## 运行时与入口
 
-核心难点不是线性地"跑完一条流水线"，而是**多轮对话式迭代**：用户说"开头太拖"，系统要基于当前成片产出下一版。这个循环决定了架构必须以"项目状态 + 修订"为中心，而不是以处理阶段为中心。
+- Electron 33 + React 18 + TypeScript；electron-vite 构建；开发用 `npm run dev`，产物在 `out/`。
+- 主进程 `src/main/index.ts`：注册 `pimko-media://`、加载 `.env`、装配 `Editor`、`PreviewService`、`FfmpegInspector`、`MockPlanner`/`OpenAiPlanner` 与 `VisualPlanner`、注册 IPC。
+- preload `src/preload/index.ts` 暴露 `window.pimko`；契约在 `src/shared/api.ts`。
+- renderer `src/renderer/src/App.tsx`：导入（支持多选）、对话、草稿/效果/成片预览、故事板片段、字幕与配乐。
+- MCP stdio：`scripts/mcp.ts` 启动 `src/mcp/server.ts`；工具 `list_projects`、`create_draft`（`videoPath`/`videoPaths`）、`revise`、`undo`、`add_broll`、`set_bgm_volume`、`get_timeline`、`export`。
 
-## Usage（调用方视角）
+## 模块职责
 
-```ts
-// 主进程装配（composition root）
-const editor = new Editor({
-  prober: new FfmpegProber(),
-  transcriber: new MockTranscriber(),        // V1: mock；之后换 WhisperTranscriber
-  intelligence: new MockIntelligence(),      // V1: mock；之后换 LlmIntelligence
-  renderer: new FfmpegRenderer(),
-  store: new FsProjectStore(appDataPath),
-})
+| 目录 | 职责 |
+|---|---|
+| `src/domain/document.ts` | `EditDocument`（schemaVersion 2）、video/audio/overlay 轨、`VideoClip`/`AudioClip`、B-roll helper、字幕策略 |
+| `src/domain/compiler.ts` | 纯函数 `compile(document, analysis)` → `CompiledTimeline`：输出时间、变速、转场重叠、overlay 轨、BGM、字幕投影、时长 |
+| `src/domain/legacy.ts` | 旧 `Timeline` ↔ `EditDocument` 适配、`compileProject`、旧项目 normalize |
+| `src/domain/edit-plan.ts` | 补丁 `EditPlan`/`EditOp`、`applyPlan`/`validatePlan`；非法计划整份拒绝 |
+| `src/domain/baseline.ts` | 语音确定性预剪：转写段 + 静音压缩 → keep ops |
+| `src/domain/visual.ts` / `visual-baseline.ts` | 镜头/黑帧/响度事实、内容类型初判、视觉 keep 计划 |
+| `src/domain/quality.ts` | `QualityReport`/`QualityVerdict` 与检查汇总 |
+| `src/domain/timeline.ts` | 旧扁平 `Timeline` 兼容视图；不再是新编辑真源 |
+| `src/ports/` | `Prober`、`Transcriber`、`Planner`、`VisualAnalyzer`、`Inspector`、`Renderer`、`Store`、`SilenceAnalyzer`；旧 `EditingIntelligence` 仍保留 |
+| `src/services/editor.ts` | 唯一命令层：createDraft/createDraftFromPaths/revise/undo/restore/export/setBgm/addBroll 等 |
+| `src/services/preview.ts` | 编译后预览，按修订缓存、串行编码 |
+| `src/services/quality-gate.ts` | 导出后质量闸门；fail 抛 `QualityError`，warn 允许交付 |
+| `src/infra/` | ffmpeg prober/renderer/inspector/scene analyzer/silence、fs store、OpenAI/OpenRouter 转写与 planner、mock planner、配置 |
+| `src/main/`、`src/preload/`、`src/renderer/`、`src/mcp/` | Electron、UI、MCP 适配 |
 
-// UI 通过 IPC 触发的两个核心动作
-const draft = await editor.createDraft('/path/to/talking-head.mp4')
-const v2 = await editor.revise(draft.project.id, { text: '开头太拖，直接进正题' })
-const out = await editor.export(v2.project.id, '~/Desktop/final.mp4')
+```mermaid
+flowchart LR
+  UI["React renderer"] -->|IPC| MAIN["Electron main"]
+  MCP["MCP stdio"] --> EDITOR
+  MAIN --> EDITOR["Editor<br/>services/editor.ts"]
+  MAIN --> PREVIEW["PreviewService"]
+  EDITOR --> PLANNER["Planner<br/>Mock / OpenAI / Visual"]
+  EDITOR --> COMPILER["Compiler<br/>domain/compiler.ts"]
+  EDITOR --> QUALITY["QualityGate"]
+  EDITOR --> STORE["ProjectStore"]
+  COMPILER --> RENDERER["Renderer<br/>infra/ffmpeg-renderer.ts"]
+  PREVIEW --> COMPILER
+  PREVIEW --> RENDERER
+  RENDERER --> FFMPEG["ffmpeg / ffprobe"]
+  QUALITY --> INSPECTOR["FfmpegInspector"]
+  INSPECTOR --> FFMPEG
+  PLANNER --> LLM["OpenAI-compatible / mock"]
 ```
 
-UI 不接触 ffmpeg、转写器、模型；它只看到 `ProjectRevision`（可播放的时间线 + 字幕 + 反馈历史）和三个动词：`createDraft / revise / export`。
+## 核心模型
 
-## 候选方案
+- `Project`：`assets`、`transcript`（兼容单素材）、可选 `transcripts`（多素材）、`silences`、`analysis`（contentKind/units/visual）、`document`、兼容 `timeline`、`settings`。
+- `EditDocument` 是编辑状态唯一真源：视频/音频/叠加轨；`VideoClip` 有源区间、速度、role、anchor、transitionIn；BGM 是音频轨上的 `AudioClip`。
+- `CompiledTimeline` 只由编译产生：`videoClips`、`audioClips`、`subtitles`（输出时间坐标）、`durationSec`、`warnings`；渲染器、预览、MCP 共用。
+- `ProjectRevision` 追加不可变历史，`schemaVersion: 2`；旧修订缺省 schemaVersion，由 `legacy.ts` 只读迁移。
+- `QualityReport`：修订/输出哈希、预计/实际时长、全局检查、每个切点检查与 verdict。
 
-### 候选 A：流水线架构（拒绝）
+## 主要数据流
 
-按执行顺序组织模块：`Ingest → Transcribe → Analyze → Assemble → Render`，一个 Pipeline 编排器依次调用各阶段，UI 调各阶段 API。
+### 导入与建稿
 
-被红旗清单否决：
-- **时间分解**：模块按执行顺序而非知识归属划分。"分析"和"组装"共享对时间线的全部理解，却分属两处。
-- **迭代不匹配**：`revise` 在线性流水线里是"回到上游重跑"，状态归属模糊——这正是产品核心循环，不能是架构的补丁。
-- **浅模块**：调用方要协调多个阶段才能完成一次剪辑。
+1. `project:import` 支持单选/多选；或 `PIMKO_SELF_TEST_VIDEO`。
+2. `Editor.createDraft`：probe → 转写（无音轨且配置了 visualPlanner 时降级视觉）→ 静音分析 → planner（speech baseline + mock/真实 ops；或 visual planner）→ `applyPlan` → `EditDocument` → `compile` → 新修订。
+3. `Editor.createDraftFromPaths`：逐个 probe/转写，按输入顺序 append 到同一个 document；`Project.transcripts` 按 assetId 保存；多素材只做顺序硬切，跨素材语义修订有限。
+4. 无音轨且没有任何 planner 时明确拒绝；网络/鉴权错误不会被当成"无音轨"吞掉。
 
-### 候选 B：项目即事实源 + 修订循环（采纳为基础）
+### 对话修订
 
-领域模型（`Project` / `Timeline` / `Transcript`）拥有全部剪辑知识；渲染是 `Project → 视频` 的纯函数；流水线被藏进 `Editor` 服务内部；基础设施（ffmpeg、whisper、LLM、存储）全部躲在 port 接口后面。
+1. `Editor.revise` 读取最新修订，normalize document，编译当前视图。
+2. `Planner.propose` 返回 `EditPlan` ops（keep/drop/trim/speed/reorder/transition/setBgm/setSubtitle）；真实模型由 `OpenAiPlanner` 调用 OpenAI 兼容接口，mock 由 `MockPlanner`。
+3. `validatePlan`/`applyPlan` 本地校验：未知 ID、越界、速度、空结果整份拒绝；旧版保留。
+4. 生成新修订，带 diff、note；计划本身当前未持久化（后续可加 `Revision.plan`）。
 
-从候选 A 移植的一点：**素材探测（probe）保留为独立 port**。它拥有独立的媒体知识（时长/分辨率/编码），与转写、渲染都不共享，值得独立抽象。
+### 预览与导出
 
-## Shape
+- 预览：`compileProject` → `Renderer.render({ compiled, assets, settings, mode: 'preview' })`；缓存键为 `sha256(projectId + revisionId)`，串行、同版去重。
+- 导出：`compileProject` → 逐段处理（统一尺寸/帧率）+ 拼接 → 字幕最后叠加 → 可选 BGM 混音 → ffprobe 自检 → `FfmpegInspector` 质量闸门。
+- `Editor.export` 返回 `{ outputPath, durationSec, quality }`；`fail` 抛 `QualityError`，保留成片供调试；`warn` 允许交付但报告明确警告。
+- 质量检查：时长、分辨率、切词、黑帧、字幕时间；爆音为启发式，镜头切断/遮挡在 P4/P5 仍部分 skip。
 
-``+src/
-  domain/       纯类型与规则，零 I/O
-    media.ts        MediaAsset
-    transcript.ts   Transcript / TranscriptSegment
-    timeline.ts     Timeline / TimelineClip / SubtitleCue / BgmTrack / Transition
-    project.ts      Project / ProjectSettings / ProjectRevision / Feedback
-  ports/        基础设施接口（main 进程实现）
-    prober.ts        probeMedia(path) -> MediaAsset
-    transcriber.ts   transcribe(asset) -> Transcript
-    intelligence.ts  draftFromTranscript / reviseTimeline（LLM 可插拔点）
-    renderer.ts      render(project, outPath) -> RenderResult
-    store.ts         ProjectStore：修订持久化
-  services/
-    editor.ts    唯一编排者：createDraft / revise / export / open
-  infra/        ports 的适配器
-    mock-transcriber.ts, mock-intelligence.ts, ffmpeg-prober.ts,
-    ffmpeg-renderer.ts, fs-store.ts
-  main/         Electron 主进程（装配 editor，暴露 IPC）
-  preload/      薄 IPC 桥
-  renderer/     React UI：导入、时间线预览、对话反馈、导出
-```
+## 内容类型
 
-关键不变量：
-- `Project`（含 timeline）是唯一事实源；渲染、UI 预览都是它的纯投影。
-- `Editor.revise` 永不改入参，产出新 `ProjectRevision`（可回退、可 diff）。
-- 时间线内坐标是源素材时间（`sourceStartSec/sourceEndSec`）；输出时间轴由渲染时派生，不手工同步。
-- 领域层零 I/O；所有 I/O 在 ports 之后，边界处校验、内部信任类型。
+- `speech`：词级转写 + 静音/停顿；`baselinePlan` 先做确定性预剪，planner 只做语义补丁。
+- `visual`：无语音时 `VisualPlanner` 用 `FfmpegSceneAnalyzer` 的 scdet/blackdetect/运动/响度，按镜头生成 keep 计划。
+- `tutorial`：当前只能从"长镜头 + 低运动"低置信度初判；未做 OCR，文字可读性仍需人工。
+- `mixed`：无法可靠判断时保持整段/混合策略，并在 note 中说明。
 
-接口深度：`Editor` 三个动词隐藏了转写、选段、字幕对齐、BGM、转场、渲染全部策略；UI 与未来的 Android 端都只需这一层。
+## 持久化
 
-## Tradeoffs accepted
+- 修订 JSON：`userData/projects/<projectId>/<revisionId>.json`；新修订含 `document`，兼容 `timeline` 作为派生视图。`PIMKO_DATA_DIR` 覆盖 MCP/无头路径。
+- 分析事实随 `Project` 快照保存；多素材转写在 `transcripts`。
+- 预览：`userData/previews/<hash>.mp4`；缩略图在 `userData/thumbnails/`。
+- 质量报告目前随 `Editor.export` 返回，尚未落盘到修订或 `userData/quality/`。
+- 旧项目按 `legacy.ts` 归一化；没有数据库、索引或删除操作。
 
-- 接受"渲染纯函数化"带来的重建成本，换取 revise/export/预览永远一致。
-- 接受 mock intelligence 的演示性成片质量，换取全链路先跑通、模型层可替换。
-- 接受 V1 无时间线手动微调，换取对话迭代回路最早闭环（用户明确选择）。
+## 验证
 
-## Alternatives considered
+| 入口 | 作用 |
+|---|---|
+| `npm run typecheck` | 类型检查 |
+| `npm run check:editing` | 87 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
+| `npm run check:fixtures` | 7 个合成素材的探测、静音、建稿、导出 |
+| `npm run smoke` / `npm run smoke:mcp` | 端到端 / MCP 闭环 |
+| `npm run test:ui` | Playwright + Electron mock E2E |
+| `npm run benchmark` / `benchmark:score` | P0 基准 harness（需 `PIMKO_BENCHMARK_DIR`；正式 B1–B5 素材未入库） |
+| `npm run build` | electron-vite 构建 |
 
-候选 A（流水线）输在迭代回路与知识归属。第三方移动优先架构（云端渲染 + 薄客户端）输在用户已选桌面本地渲染，且 MVP 验收是桌面技术演示。
+## 当前边界与已知风险
 
-## Implementation reconciliation
-
-- `Project` 增加 `transcript` 字段：修订循环需要原始转写作为事实源；从字幕反推会在多轮修订后失真。
-- `EditingIntelligence` 返回 `EditPlan { timeline, note }` 而非裸 `Timeline`：LLM 的中文说明是对话体验的一部分，由 `Editor` 写入修订的 `agentNote`。
-- 渲染保留原声音轨（初版误删）；BGM 通过 `amix` 与原声混合。
-
-## Open questions and risks
-
-- 字幕样式预设（字体/安全区）是否需要 per-platform 预设？可在 `ProjectSettings` 中先留枚举。
-- mock transcriber 需要一段带假时间戳的样例数据来驱动演示，导入真实素材时无转写可用如何降级？
-- BGM 版权：内置音乐库素材来源待定，演示版先用静音或用户自带文件。
-
-## Next implementation step
-
-按此骨架补全 domain/ports/services 与 mock infra 的可运行实现，打通 `createDraft → revise → export`（renderer 可先用 ffmpeg-static 输出占位视频）。
+- **P5 限制**：多素材顺序合成与全屏 B-roll overlay 已实现（Editor/MCP/GUI/ffmpeg）；多条主视频轨仍只编译第一条，B-roll 音轨不混入，GUI 多素材草稿播放仍看第一段。
+- **真实模型**：`OpenAiPlanner` 支持 chat/completions 与 Responses API，已实现 ops schema、重试与本地校验；真实 Groq 短链路和讯飞 `spark-x2.6`（4/4、10 轮 9/10）已通过；免费档 TPM/长响应超时与成本仍是限制。
+- **质量闸门**：切词/时长/黑帧/字幕有实现，爆音是启发式；时长默认容忍 200ms（逐段帧量化）；镜头切断与字幕遮挡仍部分 skip；黑帧检测阈值降到 0.15s 后 B3 mock 路径已 pass，真实 B3 未重跑。
+- **基准**：P0 harness 已跑通 stand-in；正式 B1–B5 已跑（B4 是合成屏幕占位），人工评分尚未完成；B1 受 Groq TPM/JSON 错误影响，只应用了部分反馈。
+- **UI**：质量报告已在导出后以横幅显示 verdict/预期与实际时长/警告项，但尚未持久化；多素材草稿播放仍指向第一段，需渲染预览查看合成结果。
+- **兼容**：`timeline` 仍作为派生视图落盘，旧验收脚本依赖；P6 后应删除该第二视图。
+- 既有缺陷：损坏修订 JSON 影响项目列表；快速双击/连点撤销可能产生重复修订；1fps 素材导出仍有风险。

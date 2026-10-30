@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { CompiledTimeline, CompiledVideoClip } from '../../domain/compiler'
 import type { ProjectRevision } from '../../domain/project'
 import { findFillerWords } from '../../domain/fillers'
+import { compileProject } from '../../domain/legacy'
 import { subtitleAtTime } from '../../domain/subtitles'
-import { timelineDurationSec, transitionDuration } from '../../domain/timeline'
 import type { ExportProgress, ExportResult, ImportResult, PimkoApi, PreviewResult, ProjectSummary } from '../../shared/api'
 
 declare global {
@@ -32,8 +33,8 @@ function nextMessageId(): string {
   return `m-${messageSeq}`
 }
 
-function totalDuration(revision: ProjectRevision): number {
-  return timelineDurationSec(revision.project.timeline)
+function compiledOf(revision: ProjectRevision): CompiledTimeline {
+  return compileProject(revision.project)
 }
 
 function fmt(seconds: number): string {
@@ -46,16 +47,24 @@ interface TimelineEntry {
   outputEnd: number
 }
 
-function buildTimeline(revision: ProjectRevision): TimelineEntry[] {
-  let outputStart = 0
-  return revision.project.timeline.clips.map((clip, clipIndex) => {
-    // 叠化吞掉相邻重叠,与导出口径一致。
-    if (clipIndex > 0) outputStart -= transitionDuration(revision.project.timeline.transitions[clipIndex - 1])
-    const length = Math.max(0, (clip.sourceEndSec - clip.sourceStartSec) / (clip.speed ?? 1))
-    const entry = { clipIndex, outputStart, outputEnd: outputStart + length }
-    outputStart += length
-    return entry
-  })
+function buildTimeline(compiled: CompiledTimeline): TimelineEntry[] {
+  return compiled.videoClips.map((clip, clipIndex) => ({
+    clipIndex,
+    outputStart: clip.outputStartSec,
+    outputEnd: clip.outputEndSec,
+  }))
+}
+
+/** 草稿预览播放源视频；把当前源时间映射回输出时间，才和编译字幕对齐。 */
+function outputTimeOf(clip: CompiledVideoClip, sourceTime: number): number {
+  return clip.outputStartSec + (sourceTime - clip.sourceStartSec) / clip.speed
+}
+
+function qualityIssues(report: ExportResult['quality']): string[] {
+  const all = [...report.checks, ...report.cuts.flatMap((cut) => cut.checks)]
+  return all
+    .filter((check) => check.status === 'fail' || check.status === 'warn')
+    .map((check) => `${check.kind}: ${check.detail ?? check.status}`)
 }
 
 function friendlyError(err: unknown): string {
@@ -86,15 +95,18 @@ export function App() {
   const activeClipRef = useRef(0)
   const seekingRef = useRef(false)
 
-  const clips = revision?.project.timeline.clips ?? []
-  const timelineEntries = useMemo(() => (revision ? buildTimeline(revision) : []), [revision])
+  const compiled = useMemo(() => (revision ? compileProject(revision.project) : undefined), [revision])
+  const clips = compiled?.videoClips ?? []
+  const timelineEntries = useMemo(() => (compiled ? buildTimeline(compiled) : []), [compiled])
   // 卡片标记:片段内残留的口癖与未压缩长停顿——被 LLM 处理掉后标记自然消失。
   const fillerHits = useMemo(
     () => (revision?.project.transcript ? findFillerWords(revision.project.transcript) : []),
     [revision],
   )
   const silences = revision?.project.silences ?? []
-  const subtitleAppearance = revision?.project.timeline.subtitleAppearance
+  const subtitleAppearance = compiled?.subtitleAppearance
+  const subtitlesEnabled = compiled?.subtitlesEnabled ?? true
+  const bgm = compiled?.bgm
   const subtitleScale = subtitleAppearance?.size === 'small' ? 0.7 : subtitleAppearance?.size === 'large' ? 1.4 : 1
 
   useEffect(() => {
@@ -111,7 +123,7 @@ export function App() {
     let cancelled = false
     setThumbnails({})
     void Promise.all(
-      revision.project.timeline.clips.slice(0, 30).map(async (clip, index) => {
+      clips.slice(0, 30).map(async (_clip, index) => {
         const url = await window.pimko.getClipThumbnail(revision.project.id, index)
         return [index, url] as const
       }),
@@ -121,7 +133,7 @@ export function App() {
     return () => {
       cancelled = true
     }
-  }, [revision])
+  }, [revision, clips])
 
   useEffect(() => {
     void window.pimko.listProjects().then(setProjects).catch(() => setProjects([]))
@@ -148,8 +160,9 @@ export function App() {
       activeClipRef.current = 0
       setLiveSubtitle('')
       setMessages([])
-      const count = result.revision.project.timeline.clips.length
-      pushAgent(`草稿好了：${count} 段，共 ${fmt(totalDuration(result.revision))}。看看哪里不顺，直接告诉我。`)
+      const nextCompiled = compiledOf(result.revision)
+      const count = nextCompiled.videoClips.length
+      pushAgent(`草稿好了：${count} 段，共 ${fmt(nextCompiled.durationSec)}。看看哪里不顺，直接告诉我。`)
       setStage('ready')
       void window.pimko.listProjects().then(setProjects).catch(() => undefined)
     } catch (err) {
@@ -189,14 +202,15 @@ export function App() {
     setFeedback('')
     setMessages((prev) => [...prev, { id: nextMessageId(), role: 'user', text }])
     try {
-      const before = totalDuration(revision)
+      const before = compiled?.durationSec ?? 0
       const next = await window.pimko.revise(revision.project.id, text)
+      const nextCompiled = compiledOf(next)
       setRevision(next)
       setOutput(null)
       setPreviewMode('draft')
       activeClipRef.current = 0
       setLiveSubtitle('')
-      const delta = totalDuration(next) - before
+      const delta = nextCompiled.durationSec - before
       const deltaText = delta === 0 ? '时长不变' : `${delta > 0 ? '+' : ''}${fmt(delta)}`
       const diffParts = next.diff
         ? [
@@ -208,8 +222,8 @@ export function App() {
         : ''
       const diffText = diffParts ? `（${diffParts}）` : ''
       const note = next.agentNote
-        ? `${next.agentNote}${diffText}（${fmt(totalDuration(next))}，${deltaText}）`
-        : `改好了：${next.project.timeline.clips.length} 段${diffText}，${fmt(totalDuration(next))}（${deltaText}）。`
+        ? `${next.agentNote}${diffText}（${fmt(nextCompiled.durationSec)}，${deltaText}）`
+        : `改好了：${nextCompiled.videoClips.length} 段${diffText}，${fmt(nextCompiled.durationSec)}（${deltaText}）。`
       pushAgent(note)
     } catch (err) {
       setError(friendlyError(err))
@@ -265,7 +279,7 @@ export function App() {
   }
 
   async function handleRemoveBgm(): Promise<void> {
-    if (!revision?.project.timeline.bgm) return
+    if (!revision || !bgm) return
     setError(null)
     try {
       const next = await window.pimko.removeBgm(revision.project.id)
@@ -274,6 +288,34 @@ export function App() {
       setPreviewMode('draft')
       setLiveSubtitle('')
       pushAgent(next.agentNote ?? '配乐已移除。')
+    } catch (err) {
+      setError(friendlyError(err))
+    }
+  }
+
+  function currentOutputTime(): number {
+    const video = videoRef.current
+    if (!video) return 0
+    const duration = compiled?.durationSec ?? 0
+    if (previewMode === 'draft') {
+      const clip = clips[activeClipRef.current]
+      if (!clip) return 0
+      return Math.max(0, Math.min(duration, outputTimeOf(clip, video.currentTime)))
+    }
+    return Math.max(0, Math.min(duration, video.currentTime))
+  }
+
+  async function handleAddBroll(): Promise<void> {
+    if (!revision) return
+    setError(null)
+    try {
+      const next = await window.pimko.addBroll(revision.project.id, currentOutputTime())
+      if (next) {
+        setRevision(next)
+        setOutput(null)
+        setPreviewMode('draft')
+        pushAgent(next.agentNote ?? 'B-roll 已插入；点击「查看实际效果」看合成结果。')
+      }
     } catch (err) {
       setError(friendlyError(err))
     }
@@ -324,7 +366,7 @@ export function App() {
     if (!clip || !videoRef.current) return
     activeClipRef.current = index
     videoRef.current.currentTime = clip.sourceStartSec
-    videoRef.current.playbackRate = clip.speed ?? 1
+    videoRef.current.playbackRate = clip.speed
     void videoRef.current.play()
   }
 
@@ -344,7 +386,7 @@ export function App() {
     if (entry) {
       activeClipRef.current = entry.clipIndex
       const clip = clips[entry.clipIndex]
-      if (clip) videoRef.current.playbackRate = clip.speed ?? 1
+      if (clip) videoRef.current.playbackRate = clip.speed
     }
   }
 
@@ -357,11 +399,11 @@ export function App() {
     }
     const entry = timelineEntries[activeClipRef.current]
     const activeClip = entry ? clips[entry.clipIndex] : undefined
-    if (!activeClip) {
+    if (!activeClip || !compiled) {
       setLiveSubtitle('')
       return
     }
-    setLiveSubtitle(subtitleAtTime(revision.project.timeline.subtitles, time))
+    setLiveSubtitle(subtitleAtTime(compiled.subtitles, outputTimeOf(activeClip, time)))
     if (seekingRef.current) return
     const clip = clips[activeClipRef.current]
     if (!clip) return
@@ -393,13 +435,13 @@ export function App() {
             </button>
           )}
           {revision && (
-            revision.project.timeline.bgm ? (
+            bgm ? (
               <>
                 <div className="bgm-volume" role="group" aria-label="配乐音量">
                   {BGM_PRESETS.map((preset) => (
                     <button
                       key={preset.gainDb}
-                      className={`button small${Math.abs((revision.project.timeline.bgm?.gainDb ?? -18) - preset.gainDb) < 1 ? ' active' : ''}`}
+                      className={`button small${Math.abs((bgm.gainDb ?? -18) - preset.gainDb) < 1 ? ' active' : ''}`}
                       onClick={() => void handleBgmVolume(preset.gainDb)}
                       disabled={stage !== 'ready'}
                     >
@@ -416,6 +458,11 @@ export function App() {
                 添加配乐
               </button>
             )
+          )}
+          {revision && (
+            <button className="button" onClick={() => void handleAddBroll()} disabled={stage !== 'ready'}>
+              插入 B-roll
+            </button>
           )}
           {revision && (
             <button className="button" onClick={() => void handlePreview()} disabled={stage !== 'ready'}>
@@ -446,6 +493,19 @@ export function App() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
+      {output?.quality && (
+        <div className={`quality-bar ${output.quality.verdict}`} role="status">
+          <strong>
+            成片检查：{output.quality.verdict === 'pass' ? '通过' : output.quality.verdict === 'warn' ? '有警告' : '未通过'}
+          </strong>
+          <span>
+            预期 {output.quality.expectedSec.toFixed(2)}s / 实际 {output.quality.actualSec.toFixed(2)}s
+          </span>
+          {qualityIssues(output.quality).length > 0 && (
+            <span className="quality-issues">{qualityIssues(output.quality).join('；')}</span>
+          )}
+        </div>
+      )}
       {(stage === 'exporting' || stage === 'previewing') && exportProgress && (
         <div className="export-progress">
           {exportProgress.phase === 'cutting'
@@ -501,7 +561,7 @@ export function App() {
                 onSeeking={() => { seekingRef.current = true }}
                 onSeeked={handleSeeked}
               />
-                {previewMode === 'draft' && liveSubtitle && subtitleAppearance?.visible !== false && (
+                {previewMode === 'draft' && liveSubtitle && subtitlesEnabled && (
                   <div className="subtitle-overlay" style={{
                     fontSize: `${22 * subtitleScale}px`,
                     fontWeight: subtitleAppearance?.style === 'minimal' ? 400 : 700,
@@ -589,7 +649,7 @@ export function App() {
               )
             return (
               <button
-                key={`${clip.assetId}-${clip.sourceStartSec}`}
+                key={`${clip.id}-${index}`}
                 className="clip"
                 onClick={() => {
                   if (previewMode === 'draft') playFrom(index)
@@ -605,7 +665,7 @@ export function App() {
                   {clip.sourceStartSec.toFixed(1)}–{clip.sourceEndSec.toFixed(1)}s
                 </span>
                 <span className="clip-length">
-                  {clip.speed && clip.speed !== 1
+                  {clip.speed !== 1
                     ? `${(length / clip.speed).toFixed(1)}s @ ${clip.speed}x`
                     : `${length.toFixed(1)}s`}
                 </span>

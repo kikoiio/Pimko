@@ -1,5 +1,9 @@
 import type { MediaAssetId } from './media'
+import type { SubtitleCue, Transition } from './document'
 import type { SubtitleAppearance } from './subtitle-appearance'
+
+export type { SubtitleCue, Transition } from './document'
+export type { SubtitleAppearance } from './subtitle-appearance'
 
 export interface TimelineClip {
   assetId: MediaAssetId
@@ -9,21 +13,15 @@ export interface TimelineClip {
   speed?: number
 }
 
-export interface SubtitleCue {
-  startSec: number
-  endSec: number
-  text: string
-}
-
 export interface BgmTrack {
   path: string
   gainDb: number
 }
 
-export type Transition =
-  | { type: 'cut' }
-  | { type: 'crossfade'; durationSec: number }
-
+/**
+ * 旧版扁平时间线。P1 起不再是真源：新修订由 EditDocument 派生此视图，
+ * 旧项目先经 domain/legacy.ts 迁移成 document 再编译。
+ */
 export interface Timeline {
   clips: TimelineClip[]
   subtitles: SubtitleCue[]

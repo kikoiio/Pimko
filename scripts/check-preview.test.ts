@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { PreviewService } from '../src/services/preview'
+import { compileProject } from '../src/domain/legacy'
 import type { Renderer } from '../src/ports/renderer'
 import type { ProjectRevision } from '../src/domain/project'
 
@@ -21,10 +22,10 @@ async function withRoot(run: (root: string) => Promise<void>): Promise<void> {
 
 void test('同版本并发预览共享编码，完成后跨实例复用缓存', async () => withRoot(async (root) => {
   let calls = 0
-  const renderer: Renderer = { async render(_project, outputPath) {
+  const renderer: Renderer = { async render(request) {
     calls++
-    await writeFile(outputPath, 'rendered')
-    return { outputPath, durationSec: 2 }
+    await writeFile(request.outputPath, 'rendered')
+    return { outputPath: request.outputPath, durationSec: request.compiled.durationSec }
   } }
   const service = new PreviewService(renderer, root)
   const [a, b] = await Promise.all([service.render(revision()), service.render(revision())])
@@ -38,31 +39,34 @@ void test('同版本并发预览共享编码，完成后跨实例复用缓存', 
 void test('新修订单独渲染，多个预览串行且使用调用时的项目快照', async () => withRoot(async (root) => {
   let active = 0
   let maxActive = 0
-  const renderer: Renderer = { async render(project, outputPath) {
+  const renderer: Renderer = { async render(request) {
     active++
     maxActive = Math.max(active, maxActive)
-    await writeFile(outputPath, project.name)
+    await writeFile(request.outputPath, JSON.stringify(request.compiled))
     active--
-    return { outputPath, durationSec: 2 }
+    return { outputPath: request.outputPath, durationSec: request.compiled.durationSec }
   } }
   const service = new PreviewService(renderer, root)
   const source = revision()
+  const expectedSnapshot = JSON.stringify(compileProject(source.project))
   const first = service.render(source)
+  // 调用后原地修改项目：预览必须仍使用入队时的编译快照。
   source.project.name = 'changed after request'
+  source.project.timeline.clips[0]!.sourceEndSec = 99
   const second = service.render(revision('next'))
   const [a, b] = await Promise.all([first, second])
   assert.notEqual(a.outputPath, b.outputPath)
-  assert.equal(await readFile(a.outputPath, 'utf8'), 'preview')
+  assert.equal(await readFile(a.outputPath, 'utf8'), expectedSnapshot)
   assert.equal(maxActive, 1)
 }))
 
 void test('编码失败清理半成品且可重试，不阻塞后续预览', async () => withRoot(async (root) => {
   let calls = 0
-  const renderer: Renderer = { async render(_project, outputPath) {
+  const renderer: Renderer = { async render(request) {
     calls++
-    await writeFile(outputPath, 'partial')
+    await writeFile(request.outputPath, 'partial')
     if (calls === 1) throw new Error('encoder failed')
-    return { outputPath, durationSec: 2 }
+    return { outputPath: request.outputPath, durationSec: request.compiled.durationSec }
   } }
   const service = new PreviewService(renderer, root)
   await assert.rejects(service.render(revision()), /encoder failed/)

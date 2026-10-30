@@ -26,14 +26,11 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: ''
       - run: npm run typecheck
-      - run: npm run build
       - name: Package (${{ matrix.target }})
         run: npm run dist:${{ matrix.target }}
-      - name: Smoke packaged app (linux only)
+      - name: List packaged artifacts (linux only)
         if: matrix.target == 'linux'
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2t64
-          ls -la release/
+        run: ls -la release/
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

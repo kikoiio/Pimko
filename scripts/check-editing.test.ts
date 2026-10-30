@@ -4,6 +4,7 @@ import { OpenAiIntelligence } from '../src/infra/openai-intelligence'
 import { buildAss, toAssTime } from '../src/infra/subtitles-ass'
 import { subtitleAtTime, subtitlesForClips } from '../src/domain/subtitles'
 import { timelineDurationSec, type TimelineClip } from '../src/domain/timeline'
+import { compileProject } from '../src/domain/legacy'
 import type { Transcript } from '../src/domain/transcript'
 import type { Project } from '../src/domain/project'
 import { MockIntelligence } from '../src/infra/mock-intelligence'
@@ -81,13 +82,17 @@ void test('中文字幕按词保留且不插入汉字间空格', () => {
 void test('重排、重复、变速后的 ASS 时间对应输出，花括号不能注入样式', () => {
   const p = project([clip(2, 5, 2), clip(0, 1), clip(0, 1)])
   p.timeline.transitions = [{ type: 'crossfade', durationSec: 0.2 }, { type: 'cut' }]
-  const ass = buildAss(p)
+  const compiled = compileProject(p)
+  const ass = buildAss(compiled, p.settings)
   assert.ok(ass.includes('0:00:00.00,0:00:01.50,Default,,0,0,0,,world again'))
   assert.ok(ass.includes('0:00:01.30,0:00:02.30,Default,,0,0,0,,Hello'))
   assert.ok(ass.includes('0:00:02.30,0:00:03.30,Default,,0,0,0,,Hello'))
+  assert.equal(compiled.durationSec, 3.3)
   assert.equal(timelineDurationSec(p.timeline), 3.3)
+  // 旧 subtitles 是迁移 fallback；这里移除转写，验证它们仍被编译并转义。
+  p.transcript = undefined
   p.timeline.subtitles = [{ startSec: 0, endSec: 1, text: '{\\pos(0,0)}hello\nworld' }]
-  const escaped = buildAss(p)
+  const escaped = buildAss(compileProject(p), p.settings)
   assert.ok(!escaped.includes('{\\pos'))
   assert.ok(escaped.includes('｛＼pos(0,0)｝hello\\Nworld'))
   assert.equal(toAssTime(59.999), '0:01:00.00')
@@ -198,7 +203,7 @@ void test('字幕外观独立于选段，连续修改合并字段并保留配乐
     assert.deepEqual(result.timeline.subtitleAppearance, { position: 'top', size: 'large', visible: true })
     assert.deepEqual(result.timeline.bgm, p.timeline.bgm)
     assert.equal(result.timeline.clips.length, 1)
-    const styled = buildAss({ ...p, timeline: result.timeline })
+    const styled = buildAss(compileProject({ ...p, timeline: result.timeline }), p.settings)
     const style = styled.split('\n').find((line) => line.startsWith('Style:'))!.split(',')
     assert.equal(style[2], '30')
     assert.equal(style[18], '8')
@@ -209,13 +214,13 @@ void test('隐藏字幕不删除转写或字幕数据，重新显示可恢复', 
   const p = project()
   const ai = new MockIntelligence()
   const hidden = await ai.reviseTimeline(p, { text: '隐藏字幕' })
-  assert.ok(!buildAss({ ...p, timeline: hidden.timeline }).includes('Dialogue:'))
+  assert.ok(!buildAss(compileProject({ ...p, timeline: hidden.timeline }), p.settings).includes('Dialogue:'))
   assert.deepEqual(hidden.timeline.subtitles, p.timeline.subtitles)
   const shown = await ai.reviseTimeline({ ...p, timeline: hidden.timeline }, { text: '显示字幕并移到顶部，简洁小字' })
   assert.equal(shown.timeline.subtitleAppearance?.visible, true)
   assert.equal(shown.timeline.subtitleAppearance?.position, 'top')
   assert.equal(shown.timeline.subtitleAppearance?.style, 'minimal')
-  assert.ok(buildAss({ ...p, timeline: shown.timeline }).includes('Dialogue:'))
+  assert.ok(buildAss(compileProject({ ...p, timeline: shown.timeline }), p.settings).includes('Dialogue:'))
 })
 
 void test('不支持的字幕参数在模型边界拒绝', async () => {

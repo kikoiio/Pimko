@@ -1,15 +1,17 @@
+import type { QualityReport } from '../domain/quality'
 import type { ProjectRevision } from '../domain/project'
+import type { ExportOutcome } from '../services/editor'
 import type { ExportProgress } from '../ports/renderer'
 
-export type { ExportProgress }
+export type { ExportProgress, QualityReport }
 
 export interface ImportResult {
   revision: ProjectRevision
   sourceUrl: string
 }
 
-export interface ExportResult {
-  outputPath: string
+/** 导出回执：文件地址、实际时长与质量报告；UI/MCP 都必须能读到 verdict。 */
+export interface ExportResult extends ExportOutcome {
   outputUrl: string
 }
 
@@ -40,5 +42,6 @@ export interface PimkoApi {
   setBgm(projectId: string): Promise<ProjectRevision | null>
   setBgmVolume(projectId: string, gainDb: number): Promise<ProjectRevision>
   removeBgm(projectId: string): Promise<ProjectRevision>
+  addBroll(projectId: string, atSec: number): Promise<ProjectRevision | null>
   getClipThumbnail(projectId: string, index: number): Promise<string | null>
 }

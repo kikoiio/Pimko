@@ -8,15 +8,17 @@ import { Editor } from '../services/editor'
 import { PreviewService } from '../services/preview'
 import { FfmpegProber } from '../infra/ffmpeg-prober'
 import { FfmpegRenderer } from '../infra/ffmpeg-renderer'
+import { FfmpegInspector } from '../infra/ffmpeg-inspector'
+import { FfmpegSceneAnalyzer } from '../infra/ffmpeg-scene-analyzer'
 import { FfmpegSilenceAnalyzer } from '../infra/ffmpeg-silence-analyzer'
+import { VisualPlanner } from '../infra/visual-planner'
 import { FsProjectStore } from '../infra/fs-store'
-import { MockIntelligence } from '../infra/mock-intelligence'
-import { createIntelligence, createTranscriber } from '../infra/ai-factory'
+import { createIntelligence, createPlanner, createTranscriber } from '../infra/ai-factory'
 import { loadDotEnv } from '../infra/env'
 import { loadLlmConfig } from '../infra/llm-config'
 import type { LlmConfig } from '../infra/llm-config'
 import type { ExportProgress } from '../ports/renderer'
-import { timelineDurationSec } from '../domain/timeline'
+import { compileProject } from '../domain/legacy'
 import type { ProjectSummary } from '../shared/api'
 import { resolveFfmpeg } from '../infra/ffmpeg-bin'
 
@@ -60,11 +62,18 @@ function createEditor(): Editor {
     )
     config = { provider: 'mock' as const }
   }
+  const transcriptPlanner = createPlanner(config)
   return new Editor({
     prober: new FfmpegProber(),
     transcriber: createTranscriber(config),
     intelligence: createIntelligence(config),
+    planner: transcriptPlanner,
+    visualPlanner: new VisualPlanner({
+      analyzer: new FfmpegSceneAnalyzer(),
+      transcriptPlanner,
+    }),
     renderer: new FfmpegRenderer(),
+    inspector: new FfmpegInspector(),
     store: new FsProjectStore(path.join(app.getPath('userData'), 'projects')),
     silenceAnalyzer: new FfmpegSilenceAnalyzer(),
   })
@@ -86,27 +95,29 @@ function registerIpc(): void {
       return { revision, sourceUrl: mediaUrl(pathToFileURL(process.env.PIMKO_SELF_TEST_VIDEO).href) }
     }
     const picked = await dialog.showOpenDialog({
-      title: '选择口播视频',
-      properties: ['openFile'],
+      title: '选择一个或多个视频（按选择顺序拼接）',
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: '视频', extensions: VIDEO_EXTENSIONS }],
     })
-    const file = picked.filePaths[0]
-    if (!file) return null
-    const revision = await editor.createDraft(file)
-    return { revision, sourceUrl: mediaUrl(pathToFileURL(file).href) }
+    const files = picked.filePaths
+    if (files.length === 0) return null
+    const revision = await editor.createDraftFromPaths(files)
+    // 兼容字段：草稿播放仍指向第一段源素材；多素材成片需用渲染预览查看。
+    return { revision, sourceUrl: mediaUrl(pathToFileURL(files[0]!).href) }
   })
 
   ipcMain.handle('project:list', async (): Promise<ProjectSummary[]> => {
     const revisions = await editor.listProjects()
     return revisions.map((revision) => {
       const asset = revision.project.assets[0]
+      const compiled = compileProject(revision.project)
       return {
         projectId: revision.project.id,
         name: revision.project.name,
         revisionId: revision.id,
         updatedAt: revision.createdAt,
-        clipCount: revision.project.timeline.clips.length,
-        durationSec: timelineDurationSec(revision.project.timeline),
+        clipCount: compiled.videoClips.length,
+        durationSec: compiled.durationSec,
         sourceUrl: asset ? mediaUrl(pathToFileURL(asset.absolutePath).href) : '',
       }
     })
@@ -133,10 +144,15 @@ function registerIpc(): void {
       filters: [{ name: 'MP4 视频', extensions: ['mp4'] }],
     })
     if (picked.canceled || !picked.filePath) return null
-    const outputPath = await editor.export(projectId, picked.filePath, (progress: ExportProgress) => {
+    const outcome = await editor.export(projectId, picked.filePath, (progress: ExportProgress) => {
       mainWindow?.webContents.send('export:progress', progress)
     })
-    return { outputPath, outputUrl: mediaUrl(pathToFileURL(outputPath).href) }
+    return {
+      outputPath: outcome.outputPath,
+      outputUrl: mediaUrl(pathToFileURL(outcome.outputPath).href),
+      durationSec: outcome.durationSec,
+      quality: outcome.quality,
+    }
   })
 
   ipcMain.handle('project:bgm:set', async (_event, projectId: string) => {
@@ -150,6 +166,17 @@ function registerIpc(): void {
     return editor.setBgm(projectId, file)
   })
 
+  ipcMain.handle('project:broll:add', async (_event, projectId: string, atSec: number) => {
+    const picked = await dialog.showOpenDialog({
+      title: '选择 B-roll 视频',
+      properties: ['openFile'],
+      filters: [{ name: '视频', extensions: VIDEO_EXTENSIONS }],
+    })
+    const file = picked.filePaths[0]
+    if (!file) return null
+    return editor.addBroll(projectId, file, Number(atSec))
+  })
+
   ipcMain.handle('project:undo', (_event, projectId: string) => editor.undo(projectId))
 
   ipcMain.handle('project:bgm:volume', (_event, projectId: string, gainDb: number) =>
@@ -160,7 +187,7 @@ function registerIpc(): void {
   ipcMain.handle('clip:thumbnail', async (_event, projectId: string, index: number): Promise<string | null> => {
     try {
       const revision = await editor.restore(projectId)
-      const clip = revision?.project.timeline.clips[index]
+      const clip = revision ? compileProject(revision.project).videoClips[index] : undefined
       const asset = revision ? revision.project.assets.find((entry) => entry.id === clip?.assetId) : undefined
       if (!revision || !clip || !asset) return null
       const cacheDir = path.join(app.getPath('userData'), 'thumbnails')

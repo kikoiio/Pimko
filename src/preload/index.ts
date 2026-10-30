@@ -16,6 +16,7 @@ const api: PimkoApi = {
   setBgm: (projectId) => ipcRenderer.invoke('project:bgm:set', projectId),
   setBgmVolume: (projectId, gainDb) => ipcRenderer.invoke('project:bgm:volume', projectId, gainDb),
   removeBgm: (projectId) => ipcRenderer.invoke('project:bgm:remove', projectId),
+  addBroll: (projectId, atSec) => ipcRenderer.invoke('project:broll:add', projectId, atSec),
   getClipThumbnail: (projectId, index) => ipcRenderer.invoke('clip:thumbnail', projectId, index),
 }
 

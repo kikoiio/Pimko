@@ -6,6 +6,9 @@ sample-assets/
 .tmp/
 .DS_Store
 
+# local tool settings
+.qoder/
+
 # packaging
 resources/bin/
 release/
