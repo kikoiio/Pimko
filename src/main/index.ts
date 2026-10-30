@@ -13,6 +13,7 @@ import { FfmpegSceneAnalyzer } from '../infra/ffmpeg-scene-analyzer'
 import { FfmpegSilenceAnalyzer } from '../infra/ffmpeg-silence-analyzer'
 import { VisualPlanner } from '../infra/visual-planner'
 import { FsProjectStore } from '../infra/fs-store'
+import { FsQualityStore } from '../infra/fs-quality-store'
 import { createIntelligence, createPlanner, createTranscriber } from '../infra/ai-factory'
 import { loadDotEnv } from '../infra/env'
 import { loadLlmConfig } from '../infra/llm-config'
@@ -75,6 +76,7 @@ function createEditor(): Editor {
     renderer: new FfmpegRenderer(),
     inspector: new FfmpegInspector(),
     store: new FsProjectStore(path.join(app.getPath('userData'), 'projects')),
+    qualityStore: new FsQualityStore(path.join(app.getPath('userData'), 'quality')),
     silenceAnalyzer: new FfmpegSilenceAnalyzer(),
   })
 }
@@ -175,6 +177,10 @@ function registerIpc(): void {
     const file = picked.filePaths[0]
     if (!file) return null
     return editor.addBroll(projectId, file, Number(atSec))
+  })
+
+  ipcMain.handle('project:quality', async (_event, projectId: string, revisionId?: string) => {
+    return (await editor.getQuality(projectId, revisionId)) ?? null
   })
 
   ipcMain.handle('project:undo', (_event, projectId: string) => editor.undo(projectId))

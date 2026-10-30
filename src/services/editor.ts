@@ -29,6 +29,7 @@ import { randomUUID } from 'node:crypto'
 import type { SilenceAnalyzer } from '../ports/analyzer'
 import type { EditingIntelligence } from '../ports/intelligence'
 import type { Planner } from '../ports/planner'
+import type { QualityStore } from '../ports/quality-store'
 import type { Prober } from '../ports/prober'
 import type { ProjectStore } from '../ports/store'
 import type { ExportProgress, Renderer } from '../ports/renderer'
@@ -65,6 +66,8 @@ export interface EditorDeps {
    * 不会把"没有检查"伪装成 pass。GUI/MCP 都注入 FfmpegInspector。
    */
   inspector?: Inspector
+  /** 质量报告持久化；缺省时只返回本次导出回执。 */
+  qualityStore?: QualityStore
 }
 
 /**
@@ -466,6 +469,7 @@ export class Editor {
       mode: 'export',
     }, onProgress)
     const quality = await this.inspectOutput(current, compiled, result.outputPath, result.durationSec)
+    await this.deps.qualityStore?.save(current.id, quality)
     return {
       outputPath: result.outputPath,
       // 质量报告里的 actualSec 来自 ffprobe；缺失时回退到渲染器自报时长。
@@ -474,6 +478,15 @@ export class Editor {
         : result.durationSec,
       quality,
     }
+  }
+
+  /** 读取修订的质量报告；不传 revisionId 时读最新修订。 */
+  async getQuality(projectId: ProjectId, revisionId?: RevisionId): Promise<QualityReport | undefined> {
+    if (!this.deps.qualityStore) return undefined
+    const revision = revisionId
+      ? await this.deps.store.get(projectId, revisionId)
+      : await this.currentRevision(projectId)
+    return revision ? this.deps.qualityStore.get(revision.id) : undefined
   }
 
   /** 导出后必须过质量闸门；没有注入 Inspector 时返回显式 warn，不伪报 pass。 */

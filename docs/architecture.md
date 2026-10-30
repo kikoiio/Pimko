@@ -26,6 +26,7 @@
 | `src/services/editor.ts` | 唯一命令层：createDraft/createDraftFromPaths/revise/undo/restore/export/setBgm/addBroll 等 |
 | `src/services/preview.ts` | 编译后预览，按修订缓存、串行编码 |
 | `src/services/quality-gate.ts` | 导出后质量闸门；fail 抛 `QualityError`，warn 允许交付 |
+| `src/ports/quality-store.ts` / `src/infra/fs-quality-store.ts` | 按修订 id 持久化质量报告 |
 | `src/infra/` | ffmpeg prober/renderer/inspector/scene analyzer/silence、fs store、OpenAI/OpenRouter 转写与 planner、mock planner、配置 |
 | `src/main/`、`src/preload/`、`src/renderer/`、`src/mcp/` | Electron、UI、MCP 适配 |
 
@@ -91,7 +92,7 @@ flowchart LR
 - 修订 JSON：`userData/projects/<projectId>/<revisionId>.json`；新修订含 `document`，兼容 `timeline` 作为派生视图。`PIMKO_DATA_DIR` 覆盖 MCP/无头路径。
 - 分析事实随 `Project` 快照保存；多素材转写在 `transcripts`。
 - 预览：`userData/previews/<hash>.mp4`；缩略图在 `userData/thumbnails/`。
-- 质量报告目前随 `Editor.export` 返回，尚未落盘到修订或 `userData/quality/`。
+- 质量报告写入 `userData/quality/<revisionId>.json`；导出回执返回，恢复项目后 UI 可重新读取。
 - 旧项目按 `legacy.ts` 归一化；没有数据库、索引或删除操作。
 
 ## 验证
@@ -112,6 +113,6 @@ flowchart LR
 - **真实模型**：`OpenAiPlanner` 支持 chat/completions 与 Responses API，已实现 ops schema、重试与本地校验；真实 Groq 短链路和讯飞 `spark-x2.6`（main 6/6、4/4、10 轮 9/10）已通过；免费档 TPM/长响应超时与成本仍是限制。
 - **质量闸门**：切词/时长/黑帧/字幕有实现，爆音是启发式；时长默认容忍 200ms（逐段帧量化）；镜头切断与字幕遮挡仍部分 skip；黑帧检测阈值降到 0.15s 后 B3 mock 路径已 pass，真实 B3 未重跑。
 - **基准**：P0 harness 已跑通 stand-in；正式 B1–B5 已跑（B4 是合成屏幕占位），人工评分尚未完成；B1 受 Groq TPM/JSON 错误影响，只应用了部分反馈。
-- **UI**：质量报告已在导出后以横幅显示 verdict/预期与实际时长/警告项，但尚未持久化；多素材草稿播放仍指向第一段，需渲染预览查看合成结果。
+- **UI**：质量报告以横幅显示 verdict/预期与实际时长/警告项，支持恢复项目后读取；多素材草稿播放仍指向第一段，需渲染预览查看合成结果。
 - **兼容**：`timeline` 仍作为派生视图落盘，旧验收脚本依赖；P6 后应删除该第二视图。
 - 既有缺陷：损坏修订 JSON 影响项目列表；快速双击/连点撤销可能产生重复修订；1fps 素材导出仍有风险。

@@ -44,4 +44,5 @@ export interface PimkoApi {
   removeBgm(projectId: string): Promise<ProjectRevision>
   addBroll(projectId: string, atSec: number): Promise<ProjectRevision | null>
   getClipThumbnail(projectId: string, index: number): Promise<string | null>
+  getQuality(projectId: string, revisionId?: string): Promise<QualityReport | null>
 }

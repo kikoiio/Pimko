@@ -18,6 +18,7 @@ const api: PimkoApi = {
   removeBgm: (projectId) => ipcRenderer.invoke('project:bgm:remove', projectId),
   addBroll: (projectId, atSec) => ipcRenderer.invoke('project:broll:add', projectId, atSec),
   getClipThumbnail: (projectId, index) => ipcRenderer.invoke('clip:thumbnail', projectId, index),
+  getQuality: (projectId, revisionId) => ipcRenderer.invoke('project:quality', projectId, revisionId),
 }
 
 contextBridge.exposeInMainWorld('pimko', api)

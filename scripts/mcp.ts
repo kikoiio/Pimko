@@ -8,6 +8,7 @@ import { FfmpegSceneAnalyzer } from '../src/infra/ffmpeg-scene-analyzer'
 import { FfmpegSilenceAnalyzer } from '../src/infra/ffmpeg-silence-analyzer'
 import { VisualPlanner } from '../src/infra/visual-planner'
 import { FsProjectStore } from '../src/infra/fs-store'
+import { FsQualityStore } from '../src/infra/fs-quality-store'
 import { createIntelligence, createPlanner, createTranscriber } from '../src/infra/ai-factory'
 import { loadDotEnv } from '../src/infra/env'
 import { loadLlmConfig } from '../src/infra/llm-config'
@@ -69,6 +70,7 @@ async function main(): Promise<void> {
     renderer: new FfmpegRenderer(),
     inspector: new FfmpegInspector(),
     store: new FsProjectStore(path.join(dataDir, 'projects')),
+    qualityStore: new FsQualityStore(path.join(dataDir, 'quality')),
     silenceAnalyzer: new FfmpegSilenceAnalyzer(),
   })
 

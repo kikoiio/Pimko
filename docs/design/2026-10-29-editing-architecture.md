@@ -360,7 +360,7 @@ sequenceDiagram
 - P5 完成多素材顺序合成与全屏 B-roll overlay（Editor/MCP/GUI/含叠化渲染）；多条主视频轨仍未支持，B-roll 音轨不混入。
 - P6 落地 OpenAiPlanner ops schema、chat/completions + Responses API、重试、本地校验；Groq 短链路与讯飞 spark-x2.6 多轮测试已通过（10 轮中 1 次 300s 超时），正式基准与多轮质量未验收。
 - 兼容偏差：`Project.timeline` 仍作为派生视图落盘，旧验收脚本依赖；P6 后应删除。
-- 未落地：质量报告持久化/UI、正式 B1–B5 基准、B-roll、真实模型验收。
+- 质量报告已按修订持久化并在导出/恢复时展示；B-roll、正式基准与真实模型验收已补充。
 
 ## 10. 开放问题与风险
 

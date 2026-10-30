@@ -81,6 +81,7 @@ export function App() {
   const [revision, setRevision] = useState<ProjectRevision | null>(null)
   const [sourceUrl, setSourceUrl] = useState<string | null>(null)
   const [output, setOutput] = useState<ExportResult | null>(null)
+  const [storedQuality, setStoredQuality] = useState<ExportResult['quality'] | null>(null)
   const [renderedPreview, setRenderedPreview] = useState<PreviewResult | null>(null)
   const [previewMode, setPreviewMode] = useState<PreviewMode>('draft')
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -111,10 +112,17 @@ export function App() {
 
   useEffect(() => {
     setRenderedPreview(null)
+    setStoredQuality(null)
     if (videoRef.current) {
       videoRef.current.pause()
       videoRef.current.playbackRate = 1
     }
+    if (!revision) return
+    let cancelled = false
+    void window.pimko.getQuality(revision.project.id, revision.id)
+      .then((quality) => { if (!cancelled) setStoredQuality(quality) })
+      .catch(() => {})
+    return () => { cancelled = true }
   }, [revision?.id])
 
   // 修订变化后重新取片段缩略图(带主进程磁盘缓存);上限 30 张防长片刷爆。
@@ -418,6 +426,7 @@ export function App() {
   }
 
   const currentPreview = renderedPreview?.revisionId === revision?.id ? renderedPreview : null
+  const qualityReport = output?.quality ?? storedQuality
   const previewSrc = previewMode === 'output' && output ? output.outputUrl
     : previewMode === 'rendered' && currentPreview ? currentPreview.previewUrl : sourceUrl
 
@@ -493,16 +502,16 @@ export function App() {
       </header>
 
       {error && <div className="error-bar">{error}</div>}
-      {output?.quality && (
-        <div className={`quality-bar ${output.quality.verdict}`} role="status">
+      {qualityReport && (
+        <div className={`quality-bar ${qualityReport.verdict}`} role="status">
           <strong>
-            成片检查：{output.quality.verdict === 'pass' ? '通过' : output.quality.verdict === 'warn' ? '有警告' : '未通过'}
+            成片检查：{qualityReport.verdict === 'pass' ? '通过' : qualityReport.verdict === 'warn' ? '有警告' : '未通过'}
           </strong>
           <span>
-            预期 {output.quality.expectedSec.toFixed(2)}s / 实际 {output.quality.actualSec.toFixed(2)}s
+            预期 {qualityReport.expectedSec.toFixed(2)}s / 实际 {qualityReport.actualSec.toFixed(2)}s
           </span>
-          {qualityIssues(output.quality).length > 0 && (
-            <span className="quality-issues">{qualityIssues(output.quality).join('；')}</span>
+          {qualityIssues(qualityReport).length > 0 && (
+            <span className="quality-issues">{qualityIssues(qualityReport).join('；')}</span>
           )}
         </div>
       )}

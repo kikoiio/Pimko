@@ -9,7 +9,7 @@
 | P0 基准 | 完成（人工评分通过） | benchmark/run/score；5/5 stand-in 通过；正式 B1–B5 已跑：B2/B4/B5 ok，B3 warn（0.17s 黑帧），B1 quality pass 但 3 轮模型错误；空时间线全部拒绝 | 人工 1–5 分待填；B4 是合成屏幕占位；B1 需重跑或接受降级结果 |
 | P1 文档/编译/渲染 | 完成 | `EditDocument`/`Compiler`/legacy；renderer 吃 `CompiledTimeline`；旧项目可加载 | `timeline` 仍作兼容视图落盘；UI 草稿播放未完全迁移 |
 | P2 语音初剪/补丁 | 完成 | `baselinePlan`、`EditPlan`/`applyPlan`、`MockPlanner`；Editor 接入 | 真实模型 ops 在 P6；多素材语义规划有限 |
-| P3 质量闸门 | 完成（启发式） | `QualityGate`/`FfmpegInspector`；词边界归一化/吸附、时长/黑帧/字幕检查；导出回执；导出后 GUI 质量横幅；B1/B2/B5 实际 pass，B3 mock pass | 爆音阈值未校准；真实 B3 未在阈值调整后重跑；镜头切断/遮挡部分 skip；报告未落盘 |
+| P3 质量闸门 | 完成（启发式） | `QualityGate`/`FfmpegInspector`；词边界归一化/吸附、时长/黑帧/字幕检查；导出回执；导出后 GUI 质量横幅；B1/B2/B5 实际 pass，B3 mock pass | 爆音阈值未校准；真实 B3 未在阈值调整后重跑；镜头切断/遮挡部分 skip |
 | P4 视觉路径 | 完成（低置信度） | scdet/blackdetect/运动/响度、VisualPlanner、视觉 baseline；无音轨降级 | tutorial 无 OCR；B3/B4 正式基准未跑 |
 | P5 多素材/轨道 | **完成（有限制）** | `createDraftFromPaths`、多转写字幕、多素材顺序导出；overlay 轨、`Editor.addBroll`、MCP `add_broll`、GUI「插入 B-roll」、含叠化的 ffmpeg overlay 合成与真实渲染测试 | 只支持全屏 B-roll；多条主视频轨仍只编译第一条；B-roll 音轨不混入；GUI 多素材草稿播放仍看第一段 |
 | P6 真实模型 | **完成（有限制）** | `OpenAiPlanner` ops schema、Responses API（讯飞）、429/422/400 json_validate_failed 降级重试、本地校验；真实短链路与讯飞 6/6、4/4、10 轮 9/10 测试通过 | 讯飞 10 轮中 1 轮 300s 超时；免费档 TPM 限流仍可能失败；多轮语义质量/成本未验收 |
@@ -237,7 +237,7 @@ flowchart LR
 - `npm run typecheck`、`check:editing`、`check:fixtures`、`smoke`、`smoke:mcp` 全绿。
 - B1–B4 各 5 轮反馈的成片、切点报告、A/B 对照可复现。
 - intent 第 6 节 8 条质量契约全部满足；至少 2/3 成片 4/5。
-- GUI/MCP 对同一修订得到相同 `CompiledTimeline`、时长、质量报告。
+- GUI/MCP 对同一修订得到相同 `CompiledTimeline`、时长、质量报告；质量报告按修订持久化。
 - `architecture.md` 已更新为重建后的实现；本计划冻结并标记 `implemented`。
 
 ## 10. 需要确认的决策

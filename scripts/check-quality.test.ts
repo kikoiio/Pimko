@@ -262,6 +262,7 @@ void test('Editor.export 返回 outputPath/durationSec/quality；失败时保留
       return { outputPath: request.outputPath, durationSec: request.compiled.durationSec }
     },
   }
+  let savedReport: { id: string; report: import('../src/domain/quality').QualityReport } | null = null
   const deps = {
     prober: { probe: async () => asset },
     transcriber: { transcribe: async () => project.transcript! },
@@ -271,6 +272,10 @@ void test('Editor.export 返回 outputPath/durationSec/quality；失败时保留
     },
     renderer,
     store: memoryStore(revision),
+    qualityStore: {
+      async save(id, report) { savedReport = { id, report } },
+      async get(id) { return savedReport?.id === id ? savedReport.report : undefined },
+    },
     inspector: fakeInspector({
       checks: [{ kind: 'wordCut', status: 'pass', detail: '切点位于词边界' }],
       cuts: [{ atSec: 1, checks: [] }],
@@ -282,6 +287,8 @@ void test('Editor.export 返回 outputPath/durationSec/quality；失败时保留
   assert.equal(outcome.durationSec, 2)
   assert.equal(outcome.quality.verdict, 'pass')
   assert.equal(outcome.quality.revisionId, revision.id)
+  assert.equal(savedReport?.id, revision.id)
+  assert.equal((await editor.getQuality(project.id))?.verdict, 'pass')
 
   const failingEditor = new Editor({
     ...deps,
