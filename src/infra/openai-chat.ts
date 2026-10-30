@@ -43,6 +43,8 @@ export interface JsonCompletionOptions {
   structureAttempts?: number
   /** 429 最多重试次数。默认 2。 */
   rateRetries?: number
+  /** 网络瞬断重试次数。默认 2。 */
+  networkRetries?: number
   /** 测试注入：替换真实等待，避免限流重试拖慢离线回归。 */
   sleep?: (ms: number) => Promise<void>
   /** 单次 HTTP 请求超时（毫秒）。默认 300s（讯飞长响应可能超过 2 分钟）。 */
@@ -88,25 +90,38 @@ export async function requestJsonCompletion<T>(
 
   const maxStructureAttempts = Math.max(1, options.structureAttempts ?? 3)
   const maxRateRetries = Math.max(0, options.rateRetries ?? 2)
+  const maxNetworkRetries = Math.max(0, options.networkRetries ?? 2)
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
   const configuredTimeout = Number(process.env.PIMKO_LLM_TIMEOUT_MS)
   const timeoutMs = Math.max(1000, options.timeoutMs ?? (Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 300_000))
   let structureAttempts = 0
   let rateRetries = 0
+  let networkRetries = 0
   let relaxed = !isOpenRouter
   let retried422 = false
   let retriedJsonValidation = false
 
   while (structureAttempts < maxStructureAttempts) {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
+    let response: Response
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch (error) {
+      const aborted = error instanceof Error && error.name === 'AbortError'
+      if (!aborted && networkRetries < maxNetworkRetries) {
+        networkRetries++
+        await sleep(5000 * networkRetries)
+        continue
+      }
+      throw error
+    }
     if (!response.ok) {
       const detail = await response.text()
       // 免费模型常被限流：按 Retry-After 等一会儿再试，别立刻把错误抛给用户。

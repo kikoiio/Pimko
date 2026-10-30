@@ -399,3 +399,25 @@ void test('Responses API 端点（讯飞 MaaS 等）使用 input 并解析 outpu
     },
   )
 })
+
+
+void test('网络瞬断重试后成功', async () => {
+  const waits: number[] = []
+  const previous = globalThis.fetch
+  let calls = 0
+  globalThis.fetch = async () => {
+    calls++
+    if (calls <= 2) throw new TypeError('fetch failed')
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ops: [], note: '恢复' }) } }] }), { status: 200 })
+  }
+  try {
+    const plan = await new OpenAiPlanner(config, {
+      sleep: async (ms) => { waits.push(ms) },
+    }).propose(reviseInput())
+    assert.equal(plan.note, '恢复')
+    assert.equal(calls, 3)
+    assert.deepEqual(waits, [5000, 10000])
+  } finally {
+    globalThis.fetch = previous
+  }
+})

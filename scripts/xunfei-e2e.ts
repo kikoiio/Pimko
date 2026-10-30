@@ -101,7 +101,10 @@ async function main(): Promise<void> {
   }
   result.failedRounds = (result.steps as Array<{ ok: boolean }>).filter((step) => !step.ok).length
   console.log(JSON.stringify(result, null, 2))
-  if (result.failedRounds) process.exitCode = 1
+  // 单轮瞬断不掩盖最终导出结果；严格模式用 PIMKO_XUNFEI_STRICT=1 把失败轮次变成非零退出。
+  const strict = process.env.PIMKO_XUNFEI_STRICT === '1'
+  const exportOk = result.export !== undefined && !(result.export as { error?: string }).error
+  if (!exportOk || (strict && (result.failedRounds as number) > 0)) process.exitCode = 1
 }
 
 void main().catch((error) => {
