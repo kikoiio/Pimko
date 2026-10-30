@@ -63,10 +63,12 @@ export async function requestJsonCompletion<T>(
   request: JsonCompletionRequest<T>,
   options: JsonCompletionOptions = {},
 ): Promise<T | null> {
-  const rawBaseUrl = config.baseUrl ?? 'https://api.openai.com/v1'
-  const isResponses = /\/responses$/i.test(rawBaseUrl.replace(/\/$/, ''))
-  const baseUrl = isResponses ? rawBaseUrl.replace(/\/$/, '') : rawBaseUrl.replace(/\/$/, '')
-  const endpoint = isResponses ? baseUrl : `${baseUrl}/chat/completions`
+  const rawBaseUrl = (config.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '')
+  const isResponses = config.apiStyle === 'responses' || /\/responses$/i.test(rawBaseUrl)
+  const baseUrl = rawBaseUrl
+  const endpoint = isResponses
+    ? (/\/responses$/i.test(baseUrl) ? baseUrl : `${baseUrl}/responses`)
+    : (/\/chat\/completions$/i.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`)
   const body: Record<string, unknown> = isResponses
     ? {
         model: config.model ?? 'gpt-4o-mini',
@@ -93,7 +95,7 @@ export async function requestJsonCompletion<T>(
   const maxNetworkRetries = Math.max(0, options.networkRetries ?? 2)
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
   const configuredTimeout = Number(process.env.PIMKO_LLM_TIMEOUT_MS)
-  const timeoutMs = Math.max(1000, options.timeoutMs ?? (Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 300_000))
+  const timeoutMs = Math.max(1000, options.timeoutMs ?? config.timeoutMs ?? (Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 300_000))
   let structureAttempts = 0
   let rateRetries = 0
   let networkRetries = 0

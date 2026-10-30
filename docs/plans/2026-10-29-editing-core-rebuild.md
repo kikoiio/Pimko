@@ -14,7 +14,7 @@
 | P5 多素材/轨道 | **完成（有限制）** | `createDraftFromPaths`、多转写字幕、多素材顺序导出；overlay 轨、`Editor.addBroll`、MCP `add_broll`、GUI「插入 B-roll」、含叠化的 ffmpeg overlay 合成与真实渲染测试 | 只支持全屏 B-roll；多条主视频轨仍只编译第一条；B-roll 音轨不混入；GUI 多素材草稿播放仍看第一段 |
 | P6 真实模型 | **完成（有限制）** | `OpenAiPlanner` ops schema、Responses API（讯飞）、429/422/400 json_validate_failed 降级重试、网络瞬断重试、本地校验；真实短链路与讯飞 10/10、6/6、4/4 测试通过 | 免费档 TPM 限流仍可能失败；多轮语义质量/成本未验收 |
 
-合并后验证：`npm run typecheck`、`npm run check:editing`（88 项）、`check:fixtures`（7/7）、`smoke`、`smoke:mcp`、`test:ui`（Xvfb mock E2E）、`npm run build` 均通过；真实短链路（Groq Whisper + planner + 导出 + 质量闸门）通过。正式 B1–B5 成片已跑过；B3 mock 路径在 0.15s 黑帧阈值下已 pass（真实 B3 未重跑），B1 免费档限流仍是已知限制。讯飞 `spark-x2.6` via Responses API 已实测：main 分支 10 轮 10/10 成功，导出质量 pass；4 轮 4/4、6 轮 6/6 也通过。
+合并后验证：`npm run typecheck`、`npm run check:editing`（91 项）、`check:fixtures`（7/7）、`smoke`、`smoke:mcp`、`test:ui`（Xvfb mock E2E）、`npm run build` 均通过；真实短链路（Groq Whisper + planner + 导出 + 质量闸门）通过。正式 B1–B5 成片已跑过；B3 mock 路径在 0.15s 黑帧阈值下已 pass（真实 B3 未重跑），B1 免费档限流仍是已知限制。讯飞 `spark-x2.6` via Responses API 已实测：main 分支 10 轮 10/10 成功，导出质量 pass；4 轮 4/4、6 轮 6/6 也通过。
 
 ## 1. 结果
 

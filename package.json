@@ -21,10 +21,11 @@
     "fixtures:boundaries": "tsx scripts/make-boundaries.ts",
     "check:boundaries": "tsx scripts/check-boundaries.ts",
     "check:fixtures": "tsx scripts/check-fixtures.ts",
-    "check:editing": "tsx --test scripts/check-editing.test.ts scripts/check-undo.ts scripts/check-preview.test.ts scripts/check-boundary-behavior.test.ts scripts/check-document.test.ts scripts/check-planner.test.ts scripts/check-quality.test.ts scripts/check-visual.test.ts scripts/check-multi.test.ts scripts/check-real-planner.test.ts scripts/check-overlay.test.ts",
+    "check:editing": "tsx --test scripts/check-editing.test.ts scripts/check-undo.ts scripts/check-preview.test.ts scripts/check-boundary-behavior.test.ts scripts/check-document.test.ts scripts/check-planner.test.ts scripts/check-quality.test.ts scripts/check-visual.test.ts scripts/check-multi.test.ts scripts/check-real-planner.test.ts scripts/check-overlay.test.ts scripts/check-config.test.ts",
     "benchmark": "tsx scripts/benchmark/run.ts",
     "benchmark:score": "tsx scripts/benchmark/score.ts",
-    "xunfei:e2e": "tsx scripts/xunfei-e2e.ts"
+    "xunfei:e2e": "tsx scripts/xunfei-e2e.ts",
+    "provider": "tsx scripts/provider.ts"
   },
   "dependencies": {
     "react": "^18.3.1",

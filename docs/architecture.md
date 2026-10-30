@@ -100,10 +100,11 @@ flowchart LR
 | 入口 | 作用 |
 |---|---|
 | `npm run typecheck` | 类型检查 |
-| `npm run check:editing` | 88 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
+| `npm run check:editing` | 91 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
 | `npm run check:fixtures` | 7 个合成素材的探测、静音、建稿、导出 |
 | `npm run smoke` / `npm run smoke:mcp` | 端到端 / MCP 闭环 |
 | `npm run test:ui` | Playwright + Electron mock E2E |
+| `provider -- list/use` | 查看/切换 `providers.json` 的 active profile（不输出 key） |
 | `npm run benchmark` / `benchmark:score` | P0 基准 harness（需 `PIMKO_BENCHMARK_DIR`；正式 B1–B5 素材未入库） |
 | `npm run build` | electron-vite 构建 |
 

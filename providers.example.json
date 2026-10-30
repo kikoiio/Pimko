@@ -1,0 +1,34 @@
+{
+  "active": "groq",
+  "providers": {
+    "groq": {
+      "protocol": "openai-chat",
+      "baseUrl": "https://api.groq.com/openai/v1",
+      "model": "openai/gpt-oss-120b",
+      "apiKeyEnv": "GROQ_API_KEY",
+      "transcription": {
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "model": "whisper-large-v3",
+        "apiKeyEnv": "GROQ_API_KEY"
+      }
+    },
+    "xunfei": {
+      "protocol": "openai-responses",
+      "baseUrl": "https://maas-api.cn-huabei-1.xf-yun.com/v1",
+      "model": "spark-x2.6",
+      "apiKeyEnv": "XUNFEI_LLM_API_KEY",
+      "timeoutMs": 600000,
+      "transcription": {
+        "baseUrl": "https://api.groq.com/openai/v1",
+        "model": "whisper-large-v3",
+        "apiKeyEnv": "GROQ_API_KEY"
+      }
+    },
+    "openrouter": {
+      "protocol": "openai-chat",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "model": "your-model",
+      "apiKeyEnv": "OPENROUTER_API_KEY"
+    }
+  }
+}
