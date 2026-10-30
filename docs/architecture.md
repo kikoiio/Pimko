@@ -109,7 +109,7 @@ flowchart LR
 ## 当前边界与已知风险
 
 - **P5 限制**：多素材顺序合成与全屏 B-roll overlay 已实现（Editor/MCP/GUI/ffmpeg）；多条主视频轨仍只编译第一条，B-roll 音轨不混入，GUI 多素材草稿播放仍看第一段。
-- **真实模型**：`OpenAiPlanner` 支持 chat/completions 与 Responses API，已实现 ops schema、重试与本地校验；真实 Groq 短链路和讯飞 `spark-x2.6`（4/4、10 轮 9/10）已通过；免费档 TPM/长响应超时与成本仍是限制。
+- **真实模型**：`OpenAiPlanner` 支持 chat/completions 与 Responses API，已实现 ops schema、重试与本地校验；真实 Groq 短链路和讯飞 `spark-x2.6`（main 6/6、4/4、10 轮 9/10）已通过；免费档 TPM/长响应超时与成本仍是限制。
 - **质量闸门**：切词/时长/黑帧/字幕有实现，爆音是启发式；时长默认容忍 200ms（逐段帧量化）；镜头切断与字幕遮挡仍部分 skip；黑帧检测阈值降到 0.15s 后 B3 mock 路径已 pass，真实 B3 未重跑。
 - **基准**：P0 harness 已跑通 stand-in；正式 B1–B5 已跑（B4 是合成屏幕占位），人工评分尚未完成；B1 受 Groq TPM/JSON 错误影响，只应用了部分反馈。
 - **UI**：质量报告已在导出后以横幅显示 verdict/预期与实际时长/警告项，但尚未持久化；多素材草稿播放仍指向第一段，需渲染预览查看合成结果。
