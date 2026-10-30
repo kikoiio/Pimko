@@ -89,7 +89,8 @@ export async function requestJsonCompletion<T>(
   const maxStructureAttempts = Math.max(1, options.structureAttempts ?? 3)
   const maxRateRetries = Math.max(0, options.rateRetries ?? 2)
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
-  const timeoutMs = Math.max(1000, options.timeoutMs ?? 300_000)
+  const configuredTimeout = Number(process.env.PIMKO_LLM_TIMEOUT_MS)
+  const timeoutMs = Math.max(1000, options.timeoutMs ?? (Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 300_000))
   let structureAttempts = 0
   let rateRetries = 0
   let relaxed = !isOpenRouter

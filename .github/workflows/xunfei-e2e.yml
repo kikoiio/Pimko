@@ -20,7 +20,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       PIMKO_XUNFEI_ROUNDS: ${{ inputs.rounds }}
@@ -30,6 +30,7 @@ jobs:
       PIMKO_LLM_API_KEY: ${{ secrets.XUNFEI_LLM_API_KEY }}
       PIMKO_LLM_MODEL: ${{ vars.XUNFEI_MODEL }}
       PIMKO_LLM_BASE_URL: ${{ vars.XUNFEI_OPENAI_RESPONSE_URL }}
+      PIMKO_LLM_TIMEOUT_MS: '600000'
       PIMKO_TRANSCRIBE_MODEL: ${{ vars.PIMKO_TRANSCRIBE_MODEL }}
       PIMKO_TRANSCRIBE_API_KEY: ${{ secrets.GROQ_LLM_API_KEY }}
       PIMKO_TRANSCRIBE_BASE_URL: ${{ vars.PIMKO_TRANSCRIBE_BASE_URL }}
