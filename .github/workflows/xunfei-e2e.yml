@@ -7,7 +7,7 @@ on:
       rounds:
         description: '连续反馈轮数（1–30）'
         required: true
-        default: '8'
+        default: '6'
         type: string
 
 permissions:
@@ -20,7 +20,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       PIMKO_XUNFEI_ROUNDS: ${{ inputs.rounds }}
