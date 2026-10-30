@@ -54,9 +54,10 @@ function revisionSummary(revision: ProjectRevision): Record<string, unknown> {
 
 async function main(): Promise<void> {
   await loadDotEnv()
-  const config = loadLlmConfig()
   // 对齐 Electron 在 Linux 的 userData 默认路径；可用 PIMKO_DATA_DIR 覆盖。
   const dataDir = process.env.PIMKO_DATA_DIR ?? path.join(homedir(), '.config', 'pimko')
+  await loadDotEnv(path.join(dataDir, '.env'))
+  const config = loadLlmConfig()
   const transcriptPlanner = createPlanner(config)
   const editor = new Editor({
     prober: new FfmpegProber(),

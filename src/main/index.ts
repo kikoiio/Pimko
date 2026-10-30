@@ -246,12 +246,15 @@ function createWindow(): void {
 }
 
 void app.whenReady().then(() => {
-  void loadDotEnv().then(() => {
-  registerMediaProtocol()
-  editor = createEditor()
-  registerIpc()
-  createWindow()
-  })
+  void (async () => {
+    // 项目目录优先；安装版从用户数据目录读取同一份配置。
+    await loadDotEnv()
+    await loadDotEnv(path.join(app.getPath('userData'), '.env'))
+    registerMediaProtocol()
+    editor = createEditor()
+    registerIpc()
+    createWindow()
+  })()
 })
 
 app.on('window-all-closed', () => {
