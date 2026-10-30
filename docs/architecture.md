@@ -82,11 +82,10 @@ flowchart LR
 
 ## 外部依赖与配置
 
-- 模型服务只有一个用户入口：`providers.json`（`active` + 1 个或多个 profile）；单模型就是只有一个 profile。每个 profile 最少只需 `baseUrl`、`model`、`apiKeyEnv`/`apiKey`；`protocol` 默认 `openai-chat`，需要 Responses API 时写 `openai-responses`；超时默认 300s，可在 profile 覆盖。
+- 模型服务只有一个用户入口：一个 `providers.json` 文件（`active` + 1 个或多个 profile）；单模型就是只有一个 profile。每个 profile 可直接填写 `baseUrl`、`model`、`apiKey`，也兼容 `apiKeyEnv`；`protocol` 默认 `openai-chat`，需要 Responses API 时写 `openai-responses`；超时默认 300s，可在 profile 覆盖。
 - `providers.json` 默认查找 `./providers.json` 或 `~/.config/pimko/providers.json`；`PIMKO_PROVIDERS_FILE` 只用于自定义路径，`PIMKO_LLM_PROFILE` 只用于临时覆盖 `active`。`npm run provider -- list|use` 切换。
-- `.env` 只放 profile 的 `apiKeyEnv` 指向的 key（变量名由 profile 决定），不再需要模型地址；安装版读启动目录与 Electron `userData/.env`，MCP 读启动目录与数据目录。
-- 转写默认跟随 LLM；如果 LLM 服务不支持 OpenAI 音频转写，再在 profile 的 `transcription` 里配独立 `baseUrl`/`model`/key。
-- 旧版 `PIMKO_LLM_*` 单服务变量只作为 CI/旧配置兼容回退，不是用户主路径；`anthropic` 原生协议仍未实现。
+- 转写默认跟随 LLM；如果 LLM 服务不支持 OpenAI 音频转写，再在 profile 的 `transcription` 里配独立 `baseUrl`/`model`/`apiKey`。所有模型设置、包括 key，都可以只放在这一个文件里。
+- 旧版 `.env` 的 `PIMKO_LLM_*` 单服务变量只作为 CI/旧配置兼容回退，不是用户主路径；`anthropic` 原生协议仍未实现。
 - ffmpeg 解析顺序：打包的 `resources/bin` → `ffmpeg-static` → 系统 PATH；ffprobe 仅打包目录或系统 PATH。开发环境需要系统 ffprobe。
 
 ## 内容类型
@@ -109,7 +108,7 @@ flowchart LR
 | 入口 | 作用 |
 |---|---|
 | `npm run typecheck` | 类型检查 |
-| `npm run check:editing` | 91 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
+| `npm run check:editing` | 93 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
 | `npm run check:fixtures` | 7 个合成素材的探测、静音、建稿、导出 |
 | `npm run smoke` / `npm run smoke:mcp` | 端到端 / MCP 闭环 |
 | `npm run test:ui` | Playwright + Electron mock E2E |

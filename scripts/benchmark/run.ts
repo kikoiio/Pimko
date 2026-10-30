@@ -524,7 +524,7 @@ async function main(): Promise<void> {
   await loadDotEnv()
   if (args.provider === 'real') {
     const config = loadLlmConfig()
-    if (config.provider === 'mock') fail('--provider real 需要 .env 中 PIMKO_LLM_PROVIDER=openai，并且已设置 PIMKO_LLM_API_KEY。')
+    if (config.provider === 'mock') fail('--provider real 需要 providers.json 中的 profile，或旧版 .env 的 PIMKO_LLM_PROVIDER=openai + PIMKO_LLM_API_KEY。')
   }
 
   const manifest = await loadManifest(args.manifestPath)

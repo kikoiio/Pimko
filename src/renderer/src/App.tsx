@@ -69,6 +69,7 @@ function qualityIssues(report: ExportResult['quality']): string[] {
 
 function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
+  if (raw.includes('模型服务') || raw.includes('provider "')) return raw
   if (raw.includes('401')) return 'API Key 无效或已过期，请检查 .env 里的 key。'
   if (raw.includes('402')) return '当前模型/音频接口需要账户余额，免费额度不够用。'
   if (raw.includes('429')) return '请求太频繁，免费模型限流了；稍等一会儿再试。'

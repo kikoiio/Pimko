@@ -106,3 +106,18 @@ void test('旧版单服务 env 仍兼容：chat/responses 由 base URL/style 决
   })
   assert.equal(explicit.apiStyle, 'responses')
 })
+
+void test('单个 provider 文件即可运行；apiKey 也可直接写在 profile 里', async () => {
+  await withProvidersFile({
+    active: 'only',
+    providers: {
+      only: { baseUrl: 'https://only.invalid/v1', model: 'only-model', apiKey: 'literal-key' },
+    },
+  }, async (file) => {
+    const config = loadLlmConfig({ PIMKO_PROVIDERS_FILE: file })
+    assert.equal(config.model, 'only-model')
+    assert.equal(config.apiKey, 'literal-key')
+    assert.equal(config.apiStyle, 'chat')
+    assert.equal(config.profileName, 'only')
+  })
+})

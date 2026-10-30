@@ -51,6 +51,41 @@ export interface JsonCompletionOptions {
   timeoutMs?: number
 }
 
+function redact(text: string, key: string | undefined): string {
+  if (!key) return text
+  return text.split(key).join('***')
+}
+
+function providerLabel(config: LlmConfig): string {
+  const name = config.profileName ? `provider "${config.profileName}"` : '模型服务'
+  const protocol = config.apiStyle === 'responses' ? 'Responses API' : 'Chat Completions'
+  const model = config.model ?? 'model 未配置'
+  const baseUrl = config.baseUrl ?? 'baseUrl 未配置'
+  return `${name}（${model}，${protocol}，${baseUrl}）`
+}
+
+function httpFailure(status: number, detail: string, config: LlmConfig): Error {
+  const label = providerLabel(config)
+  const clean = redact(detail.trim(), config.apiKey)
+  const tail = clean ? `\n${clean.slice(0, 500)}${clean.length > 500 ? '…' : ''}` : ''
+  if (status === 401 || status === 403) {
+    return new Error(`${label} 鉴权失败（HTTP ${status}）：检查 apiKey 是否正确、是否有该模型权限。${tail}`)
+  }
+  if (status === 404) {
+    return new Error(`${label} 地址或协议不匹配（HTTP 404）：检查 baseUrl；Chat 需要 /chat/completions，Responses 需要 /responses，或在 profile 设置 protocol。${tail}`)
+  }
+  if (status === 400) {
+    return new Error(`${label} 拒绝了请求（HTTP 400）：检查 model 名称、protocol 和请求参数。${tail}`)
+  }
+  if (status === 429) {
+    return new Error(`${label} 被限流（HTTP 429）：稍后重试，或提高服务额度。${tail}`)
+  }
+  if (status >= 500) {
+    return new Error(`${label} 暂时不可用（HTTP ${status}）：稍后重试。${tail}`)
+  }
+  return new Error(`${label} 请求失败（HTTP ${status}）：${tail || '检查服务配置。'}`)
+}
+
 interface ChatCompletionResponse {
   choices?: { message?: { content?: string } }[]
   /** OpenAI Responses API（讯飞 MaaS 等） */
@@ -116,13 +151,18 @@ export async function requestJsonCompletion<T>(
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (error) {
-      const aborted = error instanceof Error && error.name === 'AbortError'
-      if (!aborted && networkRetries < maxNetworkRetries) {
+      const message = error instanceof Error ? error.message : String(error)
+      const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+      if (!timedOut && networkRetries < maxNetworkRetries) {
         networkRetries++
         await sleep(5000 * networkRetries)
         continue
       }
-      throw error
+      const label = providerLabel(config)
+      if (timedOut) {
+        throw new Error(`${label} 响应超时（${Math.round(timeoutMs / 1000)}s）：检查网络，或在 providers.json 调大 timeoutMs。`)
+      }
+      throw new Error(`${label} 无法连接：${redact(message, config.apiKey)}。检查 baseUrl、网络和代理。`)
     }
     if (!response.ok) {
       const detail = await response.text()
@@ -165,7 +205,7 @@ export async function requestJsonCompletion<T>(
         delete body.response_format
         continue
       }
-      throw new Error(`LLM 请求失败: ${response.status} ${detail}`)
+      throw httpFailure(response.status, detail, config)
     }
     structureAttempts++
     const data = (await response.json()) as ChatCompletionResponse

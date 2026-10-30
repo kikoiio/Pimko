@@ -246,7 +246,7 @@ void test('429 限流按 Retry-After 重试，最多两次；超过仍失败', a
     async (requests) => {
       await assert.rejects(
         new OpenAiPlanner(config, { sleep: async () => {} }).propose(reviseInput()),
-        /LLM 请求失败: 429/,
+        /429/,
       )
       assert.equal(requests.length, 3)
     },
@@ -420,4 +420,20 @@ void test('网络瞬断重试后成功', async () => {
   } finally {
     globalThis.fetch = previous
   }
+})
+
+void test('鉴权失败的错误带 provider/model/baseUrl，且不回显 key', async () => {
+  await withFetch([{ status: 401, error: 'invalid api key' }], async () => {
+    await assert.rejects(
+      new OpenAiPlanner(config).propose(reviseInput()),
+      (error: unknown) => {
+        assert.ok(error instanceof Error)
+        assert.match(error.message, /鉴权失败/)
+        assert.match(error.message, /test-model/)
+        assert.match(error.message, /openrouter\.ai/)
+        assert.ok(!error.message.includes('test-only'))
+        return true
+      },
+    )
+  })
 })
