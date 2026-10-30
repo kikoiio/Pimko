@@ -358,7 +358,7 @@ sequenceDiagram
 - P3 落地 FfmpegInspector/QualityGate；导出返回 `{ outputPath, durationSec, quality }`，fail 保留成片并抛错。
 - P4 落地视觉分析/VisualPlanner；无音轨时 Editor 降级到视觉路径，保留 `contentKind`。
 - P5 完成多素材顺序合成与全屏 B-roll overlay（Editor/MCP/GUI/含叠化渲染）；多条主视频轨仍未支持，B-roll 音轨不混入。
-- P6 落地 OpenAiPlanner ops schema、chat/completions + Responses API、重试、本地校验；Groq 短链路与讯飞 spark-x2.6 多轮测试已通过（10 轮中 1 次 300s 超时），正式基准与多轮质量未验收。
+- P6 落地 OpenAiPlanner ops schema、chat/completions + Responses API、重试、本地校验；Groq 短链路与讯飞 spark-x2.6 多轮测试已通过（10/10），正式基准与多轮质量未验收。
 - 兼容偏差：`Project.timeline` 仍作为派生视图落盘，旧验收脚本依赖；P6 后应删除。
 - 质量报告已按修订持久化并在导出/恢复时展示；B-roll、正式基准与真实模型验收已补充。
 
