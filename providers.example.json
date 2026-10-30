@@ -2,7 +2,6 @@
   "active": "groq",
   "providers": {
     "groq": {
-      "protocol": "openai-chat",
       "baseUrl": "https://api.groq.com/openai/v1",
       "model": "openai/gpt-oss-120b",
       "apiKeyEnv": "GROQ_API_KEY",
@@ -23,12 +22,6 @@
         "model": "whisper-large-v3",
         "apiKeyEnv": "GROQ_API_KEY"
       }
-    },
-    "openrouter": {
-      "protocol": "openai-chat",
-      "baseUrl": "https://openrouter.ai/api/v1",
-      "model": "your-model",
-      "apiKeyEnv": "OPENROUTER_API_KEY"
     }
   }
 }
