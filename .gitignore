@@ -18,3 +18,6 @@ acceptance-samples/
 
 # local provider profiles (may contain keys)
 providers.json
+
+# local nested worktrees
+.worktrees/
