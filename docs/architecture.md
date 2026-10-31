@@ -101,6 +101,7 @@ flowchart LR
 - 分析事实随 `Project` 快照保存；多素材转写在 `transcripts`。
 - 预览：`userData/previews/<hash>.mp4`；缩略图在 `userData/thumbnails/`。
 - 质量报告写入 `userData/quality/<revisionId>.json`；导出回执返回，恢复项目后 UI 可重新读取。
+- 运行日志写入 `app.getPath('logs')/pimko.log`（Linux 通常是 `~/.config/pimko/logs/pimko.log`），5MB 轮转为 `.1`；记录启动配置（不含 key）、IPC/导入/导出错误、渲染进程 console 和未捕获异常。UI 顶部「日志」按钮可在文件管理器中定位。
 - 旧项目按 `legacy.ts` 归一化；没有数据库、索引或删除操作。
 
 ## 验证
@@ -108,7 +109,7 @@ flowchart LR
 | 入口 | 作用 |
 |---|---|
 | `npm run typecheck` | 类型检查 |
-| `npm run check:editing` | 93 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
+| `npm run check:editing` | 94 项离线回归（document/compiler/planner/quality/visual/undo/preview） |
 | `npm run check:fixtures` | 7 个合成素材的探测、静音、建稿、导出 |
 | `npm run smoke` / `npm run smoke:mcp` | 端到端 / MCP 闭环 |
 | `npm run test:ui` | Playwright + Electron mock E2E |

@@ -45,4 +45,6 @@ export interface PimkoApi {
   addBroll(projectId: string, atSec: number): Promise<ProjectRevision | null>
   getClipThumbnail(projectId: string, index: number): Promise<string | null>
   getQuality(projectId: string, revisionId?: string): Promise<QualityReport | null>
+  getLogPath(): Promise<string | null>
+  openLogs(): Promise<string>
 }

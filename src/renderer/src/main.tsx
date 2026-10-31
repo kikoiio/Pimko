@@ -8,3 +8,10 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 )
+
+window.addEventListener('error', (event) => {
+  console.error('[pimko:window]', event.error ?? event.message)
+})
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[pimko:unhandledrejection]', event.reason)
+})

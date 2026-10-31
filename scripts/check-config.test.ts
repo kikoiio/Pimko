@@ -83,6 +83,7 @@ void test('providers.json：缺少 active/profile 或 key 时给出明确错误'
 
 void test('旧版单服务 env 仍兼容：chat/responses 由 base URL/style 决定', () => {
   const chat = loadLlmConfig({
+    PIMKO_DISABLE_PROVIDERS: '1',
     PIMKO_LLM_PROVIDER: 'openai',
     PIMKO_LLM_API_KEY: 'key',
     PIMKO_LLM_MODEL: 'model',
@@ -91,6 +92,7 @@ void test('旧版单服务 env 仍兼容：chat/responses 由 base URL/style 决
   assert.equal(chat.apiStyle, 'chat')
   assert.equal(chat.provider, 'openai')
   const responses = loadLlmConfig({
+    PIMKO_DISABLE_PROVIDERS: '1',
     PIMKO_LLM_PROVIDER: 'openai',
     PIMKO_LLM_API_KEY: 'key',
     PIMKO_LLM_MODEL: 'model',
@@ -98,6 +100,7 @@ void test('旧版单服务 env 仍兼容：chat/responses 由 base URL/style 决
   })
   assert.equal(responses.apiStyle, 'responses')
   const explicit = loadLlmConfig({
+    PIMKO_DISABLE_PROVIDERS: '1',
     PIMKO_LLM_PROVIDER: 'openai',
     PIMKO_LLM_API_KEY: 'key',
     PIMKO_LLM_MODEL: 'model',

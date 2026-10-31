@@ -69,6 +69,7 @@ function qualityIssues(report: ExportResult['quality']): string[] {
 
 function friendlyError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
+  console.error('[pimko]', raw)
   if (raw.includes('模型服务') || raw.includes('provider "')) return raw
   if (raw.includes('401')) return 'API Key 无效或已过期，请检查 .env 里的 key。'
   if (raw.includes('402')) return '当前模型/音频接口需要账户余额，免费额度不够用。'
@@ -492,6 +493,9 @@ export function App() {
                 : '生成成片'}
             </button>
           )}
+          <button className="button" onClick={() => void window.pimko.openLogs()}>
+            日志
+          </button>
           <button
             className="button"
             onClick={() => void handleImport()}

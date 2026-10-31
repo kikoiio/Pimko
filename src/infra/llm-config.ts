@@ -43,6 +43,7 @@ export interface ProvidersFile {
 }
 
 export function resolveProvidersFile(env: NodeJS.ProcessEnv): string | undefined {
+  if (env.PIMKO_DISABLE_PROVIDERS === '1') return undefined
   const explicit = env.PIMKO_PROVIDERS_FILE?.trim()
   if (explicit) {
     const resolved = path.resolve(explicit)

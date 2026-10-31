@@ -19,6 +19,8 @@ const api: PimkoApi = {
   addBroll: (projectId, atSec) => ipcRenderer.invoke('project:broll:add', projectId, atSec),
   getClipThumbnail: (projectId, index) => ipcRenderer.invoke('clip:thumbnail', projectId, index),
   getQuality: (projectId, revisionId) => ipcRenderer.invoke('project:quality', projectId, revisionId),
+  getLogPath: () => ipcRenderer.invoke('app:log-path'),
+  openLogs: () => ipcRenderer.invoke('app:open-logs'),
 }
 
 contextBridge.exposeInMainWorld('pimko', api)

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from 'electron'
 import { execFile } from 'node:child_process'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -22,6 +22,7 @@ import type { ExportProgress } from '../ports/renderer'
 import { compileProject } from '../domain/legacy'
 import type { ProjectSummary } from '../shared/api'
 import { resolveFfmpeg } from '../infra/ffmpeg-bin'
+import { currentLogFile, initLogger, log, logError } from './logger'
 
 const VIDEO_EXTENSIONS = ['mp4', 'mov', 'mkv', 'webm', 'm4v']
 const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac']
@@ -30,6 +31,9 @@ const execFileAsync = promisify(execFile)
 
 let editor: Editor
 let mainWindow: BrowserWindow | undefined
+
+process.on('uncaughtException', (error) => logError('process', 'uncaughtException', error))
+process.on('unhandledRejection', (reason) => logError('process', 'unhandledRejection', reason))
 
 // 必须在 app ready 前注册：stream 让 <video> 支持 Range 请求，否则只能拿到无法播放的整段响应。
 protocol.registerSchemesAsPrivileged([
@@ -57,12 +61,22 @@ function createEditor(): Editor {
     config = loadLlmConfig()
   } catch (err) {
     // 配置错误不应让应用白屏；降级到 mock 并在启动时明确告知。
+    logError('config', 'failed to load model configuration', err)
     dialog.showErrorBox(
-      'LLM 配置错误',
-      `${err instanceof Error ? err.message : String(err)}\n\n已回退到 mock 模式，修正 .env 后重启应用即可。`,
+      '模型配置错误',
+      `${err instanceof Error ? err.message : String(err)}\n\n已回退到 mock 模式；修正 providers.json 后重启应用即可。`,
     )
     config = { provider: 'mock' as const }
   }
+  log('info', 'config', 'model configuration loaded', {
+    provider: config.provider,
+    profile: config.profileName,
+    model: config.model,
+    baseUrl: config.baseUrl,
+    apiStyle: config.apiStyle,
+    transcribeModel: config.transcribeModel,
+    timeoutMs: config.timeoutMs,
+  })
   const transcriptPlanner = createPlanner(config)
   return new Editor({
     prober: new FfmpegProber(),
@@ -221,6 +235,14 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('project:bgm:remove', (_event, projectId: string) => editor.removeBgm(projectId))
+
+  ipcMain.handle('app:log-path', () => currentLogFile() ?? null)
+  ipcMain.handle('app:open-logs', async () => {
+    const file = currentLogFile()
+    if (file) shell.showItemInFolder(file)
+    else await shell.openPath(app.getPath('logs'))
+    return file ?? app.getPath('logs')
+  })
 }
 
 function createWindow(): void {
@@ -235,6 +257,15 @@ function createWindow(): void {
     },
   })
   mainWindow = win
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) log(level === 3 ? 'error' : 'warn', 'renderer', message, { line, sourceId })
+  })
+  win.webContents.on('did-fail-load', (_event, code, description, validatedUrl) => {
+    logError('renderer', 'page failed to load', new Error(description), { code, url: validatedUrl })
+  })
+  win.webContents.on('render-process-gone', (_event, details) => {
+    logError('renderer', 'render process gone', new Error(details.reason))
+  })
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = undefined
   })
@@ -250,6 +281,14 @@ void app.whenReady().then(() => {
     // 项目目录优先；安装版从用户数据目录读取同一份配置。
     await loadDotEnv()
     await loadDotEnv(path.join(app.getPath('userData'), '.env'))
+    initLogger(app.getPath('logs'))
+    log('info', 'app', 'starting', {
+      version: app.getVersion(),
+      platform: process.platform,
+      arch: process.arch,
+      userData: app.getPath('userData'),
+      logFile: currentLogFile(),
+    })
     registerMediaProtocol()
     editor = createEditor()
     registerIpc()
